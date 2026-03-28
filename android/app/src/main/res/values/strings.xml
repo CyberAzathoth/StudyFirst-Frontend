@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StudyFirst</string>
+    <string name="title_activity_main">StudyFirst</string>
+    <string name="package_name">com.studyfirst.app</string>
+    <string name="custom_url_scheme">com.studyfirst.app</string>
+</resources>

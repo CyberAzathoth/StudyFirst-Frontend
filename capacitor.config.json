@@ -1,0 +1,9 @@
+{
+  "appId": "com.studyfirst.app",
+  "appName": "StudyFirst",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false
+  }
+}
