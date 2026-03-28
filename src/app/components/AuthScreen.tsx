@@ -75,7 +75,7 @@ const handleGoogleAuth = useGoogleLogin({
 });
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-[#1B1B1B] px-6 py-8">
+    <div className="min-h-screen flex flex-col bg-[#1B1B1B] px-6 py-8 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
