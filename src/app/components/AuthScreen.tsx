@@ -1,81 +1,52 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { BookOpen, Mail, Lock as LockIcon, Eye, EyeOff } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { useGoogleLogin } from "@react-oauth/google";
-import { authService } from "../services/auth.service";
 
 export default function AuthScreen() {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
-  setError("");
-  try {
-    const response = await fetch("http://localhost:5199/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+  const handleGoogleAuth = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        setLoading(true);
+        setError("");
 
-    if (!response.ok) throw new Error("Invalid email or password");
+        const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/google", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken: tokenResponse.access_token }),
+        });
 
-    const data = await response.json();
-    localStorage.setItem("study_first_token", data.token);
-    localStorage.setItem("study_first_auth", JSON.stringify(data.user));
-    navigate("/dashboard");
-  } catch (err) {
-    setError("Login failed. Check your email and password.");
-  } finally {
-    setLoading(false);
-  }
-};
+        if (!response.ok) throw new Error("Login failed");
 
-const handleGoogleAuth = useGoogleLogin({
-  onSuccess: async (tokenResponse) => {
-    try {
-      setLoading(true);
-      setError("");
+        const data = await response.json();
+        localStorage.setItem("study_first_token", data.token);
+        localStorage.setItem("study_first_auth", JSON.stringify(data.user));
+        localStorage.setItem("google_access_token", tokenResponse.access_token);
 
-      const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: tokenResponse.access_token }),
-      });
-
-      if (!response.ok) throw new Error("Login failed");
-
-      const data = await response.json();
-      localStorage.setItem("study_first_token", data.token);
-      localStorage.setItem("study_first_auth", JSON.stringify(data.user));
-      localStorage.setItem("google_access_token", tokenResponse.access_token);
-
-      navigate("/dashboard");
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("Google login failed. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  },
-  onError: () => setError("Google login was cancelled or failed."),
-  scope: [
-    "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-    "https://www.googleapis.com/auth/classroom.courses.readonly",
-    "profile",
-    "email",
-  ].join(" "),
-});
+        navigate("/dashboard");
+      } catch (err) {
+        console.error("Login error:", err);
+        setError("Google login failed. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    onError: () => setError("Google login was cancelled or failed."),
+    scope: [
+      "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+      "https://www.googleapis.com/auth/classroom.courses.readonly",
+      "profile",
+      "email",
+    ].join(" "),
+  });
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#1B1B1B] px-6 py-8 overflow-y-auto">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#1B1B1B] px-6 py-8">
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -91,20 +62,16 @@ const handleGoogleAuth = useGoogleLogin({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="flex-1 flex flex-col"
+        className="w-full max-w-md"
       >
-        <div className="bg-white rounded-3xl shadow-2xl p-8 flex flex-col">
-          <h2 className="text-3xl font-bold text-[#1B1B1B] mb-2">
-            {isSignUp ? "Create Account" : "Welcome Back"}
-          </h2>
-          <p className="text-gray-600 mb-8">
-            {isSignUp
-              ? "Sign up to start building better study habits"
-              : "Sign in to continue your study journey"}
+        <div className="bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center">
+          <h2 className="text-3xl font-bold text-[#1B1B1B] mb-2">Welcome</h2>
+          <p className="text-gray-600 mb-8 text-center">
+            Sign in with Google Classroom to start building better study habits
           </p>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm w-full text-center">
               {error}
             </div>
           )}
@@ -128,73 +95,6 @@ const handleGoogleAuth = useGoogleLogin({
               </>
             )}
           </button>
-
-          <div className="flex items-center gap-4 my-6">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-sm text-gray-500">or</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4 flex-1 flex flex-col">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="your.email@school.edu"
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#F5C842]/30 focus:border-[#F5C842] transition-all"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                <div className="relative">
-                  <LockIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-12 pr-12 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#F5C842]/30 focus:border-[#F5C842] transition-all"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1" />
-
-            <button
-              type="submit"
-              className="w-full px-6 py-4 bg-[#F5C842] text-[#1B1B1B] rounded-2xl font-semibold shadow-lg shadow-[#F5C842]/30 transition-all hover:shadow-xl hover:shadow-[#F5C842]/40 hover:bg-[#F5C842]/90"
-            >
-              {isSignUp ? "Sign Up" : "Sign In"}
-            </button>
-
-            <p className="text-center text-gray-600">
-              {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
-              <button
-                type="button"
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="text-[#1B1B1B] font-semibold hover:text-[#F5C842]"
-              >
-                {isSignUp ? "Sign In" : "Sign Up"}
-              </button>
-            </p>
-          </form>
         </div>
       </motion.div>
     </div>
