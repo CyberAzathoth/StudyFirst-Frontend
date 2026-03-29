@@ -87,19 +87,17 @@ export default function Dashboard() {
 };
 
   // Sync Google Classroom
-  const syncClassroom = async () => {
-    if (!googleAccessToken) return;
-    try {
-      await fetch(`${API}/classroom/sync`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ accessToken: googleAccessToken }),
-      });
-      fetchTasks();
-    } catch (e) {
-      console.error("Classroom sync failed", e);
-    }
-  };
+const syncClassroom = async () => {
+  try {
+    await fetch(`${API}/classroom/sync`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+    fetchTasks();
+  } catch (e) {
+    console.error("Classroom sync failed", e);
+  }
+};
 
   // Fetch streak
   const fetchStreak = async () => {

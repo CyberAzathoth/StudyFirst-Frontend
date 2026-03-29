@@ -9,41 +9,41 @@ export default function AuthScreen() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleGoogleAuth = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        setLoading(true);
-        setError("");
+const handleGoogleAuth = useGoogleLogin({
+  onSuccess: async (codeResponse) => {
+    try {
+      setLoading(true);
+      setError("");
 
-        const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/google", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken: tokenResponse.access_token }),
-        });
+      const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authCode: codeResponse.code }),
+      });
+      console.log("Auth code:", codeResponse.code);
+      if (!response.ok) throw new Error("Login failed");
 
-        if (!response.ok) throw new Error("Login failed");
+      const data = await response.json();
+      localStorage.setItem("study_first_token", data.token);
+      localStorage.setItem("study_first_auth", JSON.stringify(data.user));
 
-        const data = await response.json();
-        localStorage.setItem("study_first_token", data.token);
-        localStorage.setItem("study_first_auth", JSON.stringify(data.user));
-        localStorage.setItem("google_access_token", tokenResponse.access_token);
-
-        navigate("/dashboard");
-      } catch (err) {
-        console.error("Login error:", err);
-        setError("Google login failed. Please try again.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    onError: () => setError("Google login was cancelled or failed."),
-    scope: [
-      "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-      "https://www.googleapis.com/auth/classroom.courses.readonly",
-      "profile",
-      "email",
-    ].join(" "),
-  });
+      navigate("/dashboard");
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Google login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  },
+  onError: () => setError("Google login was cancelled or failed."),
+  flow: "auth-code",
+  scope: [
+    "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+    "https://www.googleapis.com/auth/classroom.courses.readonly",
+    "profile",
+    "email",
+  ].join(" "),
+});
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#1B1B1B] px-6 py-8">
