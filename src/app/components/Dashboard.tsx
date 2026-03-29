@@ -14,6 +14,7 @@ import BottomNav from "./BottomNav";
 import BreakTimerModal from "./BreakTimerModal";
 import AssignmentDetailModal from "./AssignmentDetailModal";
 import AddTaskModal from "./AddTaskModal";
+import { useBreakTimer } from "../../context/BreakTimerContext";
 
 const API = "https://studyfirstapi-production.up.railway.app";
 
@@ -39,6 +40,7 @@ export default function Dashboard() {
   const [streak, setStreak] = useState(0);
   const [lockedApps, setLockedApps] = useState<{packageName: string, appName: string, locked: boolean}[]>([]);
   const [showBreakModal, setShowBreakModal] = useState(false);
+  const { isActive: breakIsActive } = useBreakTimer();
   const [showAddTask, setShowAddTask] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [showAssignmentDetail, setShowAssignmentDetail] = useState(false);
@@ -342,21 +344,25 @@ const toggleAssignment = async (id: number) => {
         {/* Locked Apps Section */}
         <div className="px-6 pb-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-900">App Lock Status</h2>
-            <button
-              onClick={() => setShowBreakModal(true)}
-              className="px-4 py-2 bg-[#F5C842] text-[#1B1B1B] rounded-xl font-medium shadow-md shadow-[#F5C842]/30 hover:shadow-lg transition-all"
-            >
-              Take Break
-            </button>
-          </div>
+  <h2 className="text-xl font-bold text-gray-900">App Lock Status</h2>
+  <button
+    onClick={() => setShowBreakModal(true)}
+    className={`px-4 py-2 rounded-xl font-medium shadow-md transition-all ${
+      breakIsActive
+        ? "bg-green-500 text-white shadow-green-500/30"
+        : "bg-[#F5C842] text-[#1B1B1B] shadow-[#F5C842]/30"
+    }`}
+  >
+    {breakIsActive ? "On Break 🎉" : "Take Break"}
+  </button>
+</div>
 
           <div className="grid grid-cols-2 gap-3">
   {lockedApps.slice(0, 4).map((app) => (
     <div
       key={app.packageName}
       className={`bg-white rounded-2xl p-4 shadow-sm border-2 ${
-        app.locked ? "border-red-200" : "border-green-200"
+        breakIsActive || !app.locked ? "border-green-200" : "border-red-200"
       }`}
     >
       <div className="flex flex-col items-center gap-2">
@@ -365,10 +371,16 @@ const toggleAssignment = async (id: number) => {
         </div>
         <span className="font-medium text-gray-900 text-sm">{app.appName}</span>
         <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${
-          app.locked ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+          breakIsActive || !app.locked
+            ? "bg-green-100 text-green-700"
+            : "bg-red-100 text-red-700"
         }`}>
-          {app.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-          <span className="text-xs font-medium">{app.locked ? "Locked" : "Unlocked"}</span>
+          {breakIsActive || !app.locked
+            ? <Unlock className="w-3 h-3" />
+            : <Lock className="w-3 h-3" />}
+          <span className="text-xs font-medium">
+            {breakIsActive ? "Break" : app.locked ? "Locked" : "Unlocked"}
+          </span>
         </div>
       </div>
     </div>
