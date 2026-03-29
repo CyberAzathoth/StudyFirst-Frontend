@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Coffee, Clock, Gift, Timer, AlertCircle } from "lucide-react";
+import { registerPlugin } from "@capacitor/core";
+const AppLock = registerPlugin<any>("AppLock");
 
 interface BreakTimerModalProps {
   isOpen: boolean;
@@ -13,37 +15,62 @@ export default function BreakTimerModal({
   onClose,
   assignmentJustCompleted = false,
 }: BreakTimerModalProps) {
-  const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const [isActive, setIsActive] = useState(false);
-  
-  // Daily break tracking (max 2 hours = 120 minutes)
-  const [dailyBreakUsed, setDailyBreakUsed] = useState(0); // in minutes
-  const maxDailyBreak = 120; // 2 hours in minutes
-  
-  // Interval tracking (1.5 hours = 90 minutes between breaks)
-  const [lastBreakEndTime, setLastBreakEndTime] = useState<number | null>(null);
-  const breakIntervalRequired = 90; // 90 minutes (1 hour 30 minutes)
-  
-  // Check if enough time has passed since last break
-  const canTakeBreakByInterval = () => {
-    if (!lastBreakEndTime) return true; // First break of the day
-    const now = Date.now();
-    const minutesSinceLastBreak = (now - lastBreakEndTime) / 1000 / 60;
-    return minutesSinceLastBreak >= breakIntervalRequired;
-  };
+const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
+const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+const [isActive, setIsActive] = useState(false);
 
-  // Calculate time until next break is allowed
-  const getMinutesUntilNextBreak = () => {
-    if (!lastBreakEndTime) return 0;
-    const now = Date.now();
-    const minutesSinceLastBreak = (now - lastBreakEndTime) / 1000 / 60;
-    const remaining = breakIntervalRequired - minutesSinceLastBreak;
-    return Math.max(0, Math.ceil(remaining));
-  };
+const maxDailyBreak = 120;
+const breakIntervalRequired = 90;
 
-  const canTakeBreak = assignmentJustCompleted || canTakeBreakByInterval();
-  const dailyBreakRemaining = maxDailyBreak - dailyBreakUsed;
+// Load persisted state from localStorage
+const [dailyBreakUsed, setDailyBreakUsed] = useState<number>(() => {
+  const saved = localStorage.getItem("break_daily_used");
+  const savedDate = localStorage.getItem("break_daily_date");
+  const today = new Date().toDateString();
+  // Reset if it's a new day
+  if (savedDate !== today) {
+    localStorage.setItem("break_daily_date", today);
+    localStorage.setItem("break_daily_used", "0");
+    return 0;
+  }
+  return saved ? parseInt(saved) : 0;
+});
+
+const [lastBreakEndTime, setLastBreakEndTime] = useState<number | null>(() => {
+  const saved = localStorage.getItem("break_last_end_time");
+  return saved ? parseInt(saved) : null;
+});
+
+// Persist dailyBreakUsed whenever it changes
+useEffect(() => {
+  localStorage.setItem("break_daily_used", dailyBreakUsed.toString());
+  localStorage.setItem("break_daily_date", new Date().toDateString());
+}, [dailyBreakUsed]);
+
+// Persist lastBreakEndTime whenever it changes
+useEffect(() => {
+  if (lastBreakEndTime !== null) {
+    localStorage.setItem("break_last_end_time", lastBreakEndTime.toString());
+  }
+}, [lastBreakEndTime]);
+
+const canTakeBreakByInterval = () => {
+  if (!lastBreakEndTime) return true;
+  const now = Date.now();
+  const minutesSinceLastBreak = (now - lastBreakEndTime) / 1000 / 60;
+  return minutesSinceLastBreak >= breakIntervalRequired;
+};
+
+const getMinutesUntilNextBreak = () => {
+  if (!lastBreakEndTime) return 0;
+  const now = Date.now();
+  const minutesSinceLastBreak = (now - lastBreakEndTime) / 1000 / 60;
+  const remaining = breakIntervalRequired - minutesSinceLastBreak;
+  return Math.max(0, Math.ceil(remaining));
+};
+
+const canTakeBreak = assignmentJustCompleted || canTakeBreakByInterval();
+const dailyBreakRemaining = maxDailyBreak - dailyBreakUsed;
 
   useEffect(() => {
     let interval: number | undefined;
@@ -63,31 +90,29 @@ export default function BreakTimerModal({
     };
   }, [isActive, timeRemaining]);
 
-  const startBreak = (minutes: number) => {
-    // Check if user has enough daily break time remaining
-    if (dailyBreakRemaining < minutes) {
-      alert(`You only have ${dailyBreakRemaining} minutes of break time left today.`);
-      return;
-    }
+const startBreak = async (minutes: number) => {
+  if (dailyBreakRemaining < minutes) {
+    alert(`You only have ${dailyBreakRemaining} minutes of break time left today.`);
+    return;
+  }
+  try { await AppLock.pauseLocking(); } catch (e) {}
+  setSelectedDuration(minutes);
+  setTimeRemaining(minutes * 60);
+  setIsActive(true);
+  setDailyBreakUsed((prev) => prev + minutes);
+};
 
-    setSelectedDuration(minutes);
-    setTimeRemaining(minutes * 60);
-    setIsActive(true);
-    setDailyBreakUsed((prev) => prev + minutes);
-  };
-
-  const cancelBreak = () => {
-    // Return unused break time
-    if (selectedDuration && timeRemaining) {
-      const unusedMinutes = Math.ceil(timeRemaining / 60);
-      setDailyBreakUsed((prev) => Math.max(0, prev - unusedMinutes));
-    }
-    
-    setIsActive(false);
-    setTimeRemaining(null);
-    setSelectedDuration(null);
-    setLastBreakEndTime(Date.now());
-  };
+const cancelBreak = async () => {
+  if (selectedDuration && timeRemaining) {
+    const unusedMinutes = Math.ceil(timeRemaining / 60);
+    setDailyBreakUsed((prev) => Math.max(0, prev - unusedMinutes));
+  }
+  try { await AppLock.resumeLocking(); } catch (e) {}
+  setIsActive(false);
+  setTimeRemaining(null);
+  setSelectedDuration(null);
+  setLastBreakEndTime(Date.now());
+};
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
