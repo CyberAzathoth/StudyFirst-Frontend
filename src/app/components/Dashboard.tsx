@@ -30,18 +30,14 @@ interface Assignment {
   attachments?: string[];
 }
 
-const mockLockedApps = [
-  { id: 1, name: "Instagram", icon: "📷", locked: true },
-  { id: 2, name: "TikTok", icon: "🎵", locked: true },
-  { id: 3, name: "YouTube", icon: "▶️", locked: true },
-  { id: 4, name: "Twitter", icon: "🐦", locked: false },
-];
+import { registerPlugin } from "@capacitor/core";
+const AppLock = registerPlugin<any>("AppLock");
 
 export default function Dashboard() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [streak, setStreak] = useState(0);
-  const [lockedApps] = useState(mockLockedApps);
+  const [lockedApps, setLockedApps] = useState<{packageName: string, appName: string, locked: boolean}[]>([]);
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
@@ -116,10 +112,37 @@ export default function Dashboard() {
     }
   };
 
+  const fetchLockedApps = async () => {
+  try {
+    const result = await AppLock.getInstalledApps();
+    const defaultLocked = [
+      "com.instagram.android",
+      "com.zhiliaoapp.musically",
+      "com.facebook.katana",
+      "com.twitter.android",
+    ];
+    setLockedApps(
+      (result.apps || []).map((app: any) => ({
+        ...app,
+        locked: defaultLocked.includes(app.packageName),
+      }))
+    );
+  } catch (e) {
+    // Fallback for browser
+    setLockedApps([
+      { packageName: "com.instagram.android", appName: "Instagram", locked: true },
+      { packageName: "com.zhiliaoapp.musically", appName: "TikTok", locked: true },
+      { packageName: "com.facebook.katana", appName: "Facebook", locked: true },
+      { packageName: "com.twitter.android", appName: "Twitter", locked: false },
+    ]);
+  }
+};
+
   useEffect(() => {
     fetchTasks();
     syncClassroom();
     fetchStreak();
+    fetchLockedApps();
   }, []);
 
   const isToday = (date: Date) => {
@@ -329,26 +352,28 @@ const toggleAssignment = async (id: number) => {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {lockedApps.map((app) => (
-              <div
-                key={app.id}
-                className={`bg-white rounded-2xl p-4 shadow-sm border-2 ${
-                  app.locked ? "border-red-200" : "border-green-200"
-                }`}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  <div className="text-4xl">{app.icon}</div>
-                  <span className="font-medium text-gray-900 text-sm">{app.name}</span>
-                  <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${
-                    app.locked ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
-                  }`}>
-                    {app.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                    <span className="text-xs font-medium">{app.locked ? "Locked" : "Unlocked"}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+  {lockedApps.slice(0, 4).map((app) => (
+    <div
+      key={app.packageName}
+      className={`bg-white rounded-2xl p-4 shadow-sm border-2 ${
+        app.locked ? "border-red-200" : "border-green-200"
+      }`}
+    >
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-12 h-12 bg-gradient-to-br from-yellow-100 to-orange-100 rounded-xl flex items-center justify-center text-xl font-bold text-gray-600">
+          {app.appName.charAt(0)}
+        </div>
+        <span className="font-medium text-gray-900 text-sm">{app.appName}</span>
+        <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${
+          app.locked ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+        }`}>
+          {app.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+          <span className="text-xs font-medium">{app.locked ? "Locked" : "Unlocked"}</span>
+        </div>
+      </div>
+    </div>
+  ))}
+</div>
         </div>
       </div>
 

@@ -274,8 +274,6 @@ const settingsSections: SettingsSection[] = [
       <AppLockManagementModal
         isOpen={showAppLockModal}
         onClose={() => setShowAppLockModal(false)}
-        initialApps={installedApps}
-        onSave={handleSaveApps}
       />
 
       <SignOutConfirmationModal
