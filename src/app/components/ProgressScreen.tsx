@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import AchievementDetailModal from "./AchievementDetailModal";
 import AllAchievementsModal from "./AllAchievementsModal";
 
-const API = "http://localhost:5199";
+const API = "https://studyfirstapi-production.up.railway.app";
 
 const achievements = [
   {

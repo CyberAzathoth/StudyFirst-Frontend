@@ -4,7 +4,7 @@ import { Calendar, ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock } from
 import BottomNav from "./BottomNav";
 import AssignmentDetailModal from "./AssignmentDetailModal";
 
-const API = "http://localhost:5199";
+const API = "https://studyfirstapi-production.up.railway.app";
 
 interface Assignment {
   id: number;

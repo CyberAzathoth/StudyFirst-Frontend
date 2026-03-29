@@ -15,7 +15,7 @@ import BreakTimerModal from "./BreakTimerModal";
 import AssignmentDetailModal from "./AssignmentDetailModal";
 import AddTaskModal from "./AddTaskModal";
 
-const API = "http://localhost:5199";
+const API = "https://studyfirstapi-production.up.railway.app";
 
 interface Assignment {
   id: number;
