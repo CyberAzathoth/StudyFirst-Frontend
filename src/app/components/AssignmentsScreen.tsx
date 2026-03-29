@@ -256,7 +256,8 @@ const completeTask = async (id: number) => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (!assignment.completed) completeTask(assignment.id);
+                                if (!assignment.completed && assignment.source !== "google-classroom") 
+                                completeTask(assignment.id);
                               }}
                               className="mt-1"
                             >

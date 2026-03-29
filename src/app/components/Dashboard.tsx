@@ -277,10 +277,14 @@ const toggleAssignment = async (id: number) => {
                 >
                   <div className="flex items-start gap-3">
                     <button
-                      onClick={() => toggleAssignment(assignment.id)}
-                      disabled={assignment.completed}
-                      className={assignment.completed ? "cursor-not-allowed opacity-60 mt-1" : "cursor-pointer mt-1"}
-                    >
+                        onClick={() => toggleAssignment(assignment.id)}
+                        disabled={assignment.completed || assignment.source === "google-classroom"}
+                            className={
+                            assignment.completed || assignment.source === "google-classroom" 
+                            ? "cursor-not-allowed opacity-60 mt-1" 
+                            : "cursor-pointer mt-1"
+                            }
+                      >
                       {assignment.completed ? (
                         <CheckCircle2 className="w-6 h-6 text-green-500 fill-green-500" />
                       ) : (
