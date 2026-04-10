@@ -27,7 +27,7 @@ interface SettingsItem {
   toggle?: boolean;
   onToggle?: () => void;
   onClick?: () => void;
-  clickable?: boolean; // explicit flag — chevron only shown when this is true
+  clickable?: boolean;
 }
 
 interface SettingsSection {
@@ -37,62 +37,59 @@ interface SettingsSection {
 
 export default function SettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-const [breakReminders, setBreakReminders] = useState(true);
+  const [breakReminders, setBreakReminders] = useState(true);
 
-useEffect(() => {
-  Preferences.get({ key: "notifications_enabled" }).then(({ value }) => {
-    if (value !== null) setNotificationsEnabled(value === "true");
-  });
-  Preferences.get({ key: "break_reminders_enabled" }).then(({ value }) => {
-    if (value !== null) setBreakReminders(value === "true");
-  });
-}, []);
+  useEffect(() => {
+    Preferences.get({ key: "notifications_enabled" }).then(({ value }) => {
+      if (value !== null) setNotificationsEnabled(value === "true");
+    });
+    Preferences.get({ key: "break_reminders_enabled" }).then(({ value }) => {
+      if (value !== null) setBreakReminders(value === "true");
+    });
+  }, []);
 
   const [showAppLockModal, setShowAppLockModal] = useState(false);
-  const [lockedAppsCount, setLockedAppsCount] = useState(0); // Bug 11.1 fix — starts at 0, loaded from storage
-  const [lastSynced, setLastSynced] = useState<string>("Never"); // Bug 8 fix
+  const [lockedAppsCount, setLockedAppsCount] = useState(0);
+  const [lastSynced, setLastSynced] = useState<string>("Never");
   const [user, setUser] = useState<any>({});
 
   const navigate = useNavigate();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
 
   useEffect(() => {
-  Preferences.get({ key: "study_first_auth" }).then(({ value }) => {
-    if (value) setUser(JSON.parse(value));
-  });
+    Preferences.get({ key: "study_first_auth" }).then(({ value }) => {
+      if (value) setUser(JSON.parse(value));
+    });
 
-  // Bug 11.1 — read locked apps count from AppLock with timeout so it can't freeze
-const loadLockedCount = async () => {
-  const timer = setTimeout(() => setLockedAppsCount(0), 3000);
-  try {
-    const state = await Promise.race([
-      AppLock.getLockingState(),
-      new Promise((_, reject) => setTimeout(() => reject("timeout"), 2500))
-    ]);
-    clearTimeout(timer);
-    setLockedAppsCount((state as any).lockedApps?.length ?? 0);
-  } catch {
-    clearTimeout(timer);
-    setLockedAppsCount(0);
-  }
-};
-  loadLockedCount();
+    const loadLockedCount = async () => {
+      const timer = setTimeout(() => setLockedAppsCount(0), 3000);
+      try {
+        const state = await Promise.race([
+          AppLock.getLockingState(),
+          new Promise((_, reject) => setTimeout(() => reject("timeout"), 2500))
+        ]);
+        clearTimeout(timer);
+        setLockedAppsCount((state as any).lockedApps?.length ?? 0);
+      } catch {
+        clearTimeout(timer);
+        setLockedAppsCount(0);
+      }
+    };
+    loadLockedCount();
 
-  // Bug 8 — load last sync time from storage
-  Preferences.get({ key: "last_classroom_sync" }).then(({ value }) => {
-    if (value) {
-      const date = new Date(value);
-      setLastSynced(
-        date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
-        ", " +
-        date.toLocaleDateString([], { month: "short", day: "numeric" })
-      );
-    } else {
-      setLastSynced("Never synced");
-    }
-  });
-}, []);
-
+    Preferences.get({ key: "last_classroom_sync" }).then(({ value }) => {
+      if (value) {
+        const date = new Date(value);
+        setLastSynced(
+          date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+          ", " +
+          date.toLocaleDateString([], { month: "short", day: "numeric" })
+        );
+      } else {
+        setLastSynced("Never synced");
+      }
+    });
+  }, []);
 
   const initials = user.name
     ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()
@@ -100,24 +97,29 @@ const loadLockedCount = async () => {
 
   const handleSignOut = () => setShowSignOutModal(true);
 
-const confirmSignOut = async () => {
+ const confirmSignOut = async () => {
   setShowSignOutModal(false);
+
+  // Initialize first to prevent NPE crash, then sign out
+  try {
+    await GoogleAuth.initialize({
+      clientId: "551585504334-lj19g8dubm8hducajomkvomf8tte7a1a.apps.googleusercontent.com",
+      scopes: ["profile", "email"],
+      grantOfflineAccess: true,
+    });
+    await GoogleAuth.signOut();
+  } catch (e) {
+    console.warn("Google signOut ignored:", e);
+  }
 
   await Promise.all([
     Preferences.remove({ key: "study_first_token" }),
     Preferences.remove({ key: "study_first_auth" }),
     Preferences.remove({ key: "current_user" }),
+    Preferences.remove({ key: "has_logged_in" }),
   ]);
 
   navigate("/auth", { replace: true });
-
-  try {
-    await GoogleAuth.initialize({
-      scopes: ["profile", "email"],
-      grantOfflineAccess: true,
-    });
-    await GoogleAuth.signOut();
-  } catch (e) {}
 };
 
   const settingsSections: SettingsSection[] = [
@@ -129,7 +131,7 @@ const confirmSignOut = async () => {
           label: "Profile",
           value: user.name || "User",
           color: "text-blue-600",
-          clickable: false, // Bug 11 fix — no chevron, not tappable
+          clickable: false,
         },
         {
           icon: BookOpen,
@@ -141,7 +143,7 @@ const confirmSignOut = async () => {
         {
           icon: Calendar,
           label: "Last Synced",
-          value: lastSynced, // Bug 8 fix — real value
+          value: lastSynced,
           color: "text-purple-600",
           clickable: false,
         },
@@ -156,14 +158,14 @@ const confirmSignOut = async () => {
           value: notificationsEnabled,
           toggle: true,
           onToggle: async () => {
-  const newVal = !notificationsEnabled;
-  setNotificationsEnabled(newVal);
-  await Preferences.set({ key: "notifications_enabled", value: String(newVal) });
-  if (!newVal) {
-    await notificationsService.cancelDueTomorrowNotification();
-    await notificationsService.cancelBreakReminders();
-  }
-},
+            const newVal = !notificationsEnabled;
+            setNotificationsEnabled(newVal);
+            await Preferences.set({ key: "notifications_enabled", value: String(newVal) });
+            if (!newVal) {
+              await notificationsService.cancelDueTomorrowNotification();
+              await notificationsService.cancelBreakReminders();
+            }
+          },
           color: "text-orange-600",
         },
         {
@@ -172,11 +174,11 @@ const confirmSignOut = async () => {
           value: breakReminders,
           toggle: true,
           onToggle: async () => {
-  const newVal = !breakReminders;
-  setBreakReminders(newVal);
-  await Preferences.set({ key: "break_reminders_enabled", value: String(newVal) });
-  if (!newVal) await notificationsService.cancelBreakReminders();
-},
+            const newVal = !breakReminders;
+            setBreakReminders(newVal);
+            await Preferences.set({ key: "break_reminders_enabled", value: String(newVal) });
+            if (!newVal) await notificationsService.cancelBreakReminders();
+          },
           color: "text-pink-600",
         },
       ],
@@ -190,9 +192,8 @@ const confirmSignOut = async () => {
           value: lockedAppsCount === 0 ? "None selected" : `${lockedAppsCount} app${lockedAppsCount !== 1 ? "s" : ""}`,
           color: "text-red-600",
           onClick: () => setShowAppLockModal(true),
-          clickable: true, // Bug 11 fix — only this one gets a chevron
+          clickable: true,
         },
-        // Bug 14 fix — removed useless "Break Duration" static row entirely
       ],
     },
   ];
@@ -214,21 +215,21 @@ const confirmSignOut = async () => {
         </div>
 
         {/* Profile Card */}
-<div className="mx-6 mt-6 mb-2 bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
-  <div className="flex items-center gap-4">
-    <div className="w-14 h-14 flex-shrink-0 bg-[#F5C842] rounded-full flex items-center justify-center text-[#1B1B1B] text-xl font-bold overflow-hidden">
-      {user.picture ? (
-        <img src={user.picture} alt={user.name} className="w-14 h-14 rounded-full object-cover" />
-      ) : (
-        initials
-      )}
-    </div>
-    <div className="flex-1 min-w-0">
-      <h3 className="text-lg font-bold text-[#1B1B1B] truncate">{user.name || "User"}</h3>
-      <p className="text-sm text-gray-500 truncate">{user.email || ""}</p>
-    </div>
-  </div>
-</div>
+        <div className="mx-6 mt-6 mb-2 bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 flex-shrink-0 bg-[#F5C842] rounded-full flex items-center justify-center text-[#1B1B1B] text-xl font-bold overflow-hidden">
+              {user.picture ? (
+                <img src={user.picture} alt={user.name} className="w-14 h-14 rounded-full object-cover" />
+              ) : (
+                initials
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-bold text-[#1B1B1B] truncate">{user.name || "User"}</h3>
+              <p className="text-sm text-gray-500 truncate">{user.email || ""}</p>
+            </div>
+          </div>
+        </div>
 
         {/* Settings Sections */}
         <div className="px-6 space-y-6">
@@ -272,7 +273,6 @@ const confirmSignOut = async () => {
                             />
                           </button>
                         ) : item.clickable ? (
-                          // Bug 11 fix — ChevronRight only on clickable items
                           <ChevronRight className="w-5 h-5 text-gray-400" />
                         ) : null}
                       </div>
@@ -305,24 +305,24 @@ const confirmSignOut = async () => {
       </div>
 
       {showAppLockModal && (
-  <AppLockManagementModal
-    isOpen={showAppLockModal}
-    onClose={() => {
-      setShowAppLockModal(false);
-      setTimeout(async () => {
-        try {
-          const state = await Promise.race([
-            AppLock.getLockingState(),
-            new Promise((_, reject) => setTimeout(() => reject(), 2000))
-          ]);
-          setLockedAppsCount((state as any).lockedApps?.length ?? 0);
-        } catch {
-          setLockedAppsCount(0);
-        }
-      }, 300);
-    }}
-  />
-)}
+        <AppLockManagementModal
+          isOpen={showAppLockModal}
+          onClose={() => {
+            setShowAppLockModal(false);
+            setTimeout(async () => {
+              try {
+                const state = await Promise.race([
+                  AppLock.getLockingState(),
+                  new Promise((_, reject) => setTimeout(() => reject(), 2000))
+                ]);
+                setLockedAppsCount((state as any).lockedApps?.length ?? 0);
+              } catch {
+                setLockedAppsCount(0);
+              }
+            }, 300);
+          }}
+        />
+      )}
 
       <SignOutConfirmationModal
         isOpen={showSignOutModal}

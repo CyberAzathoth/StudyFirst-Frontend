@@ -43,7 +43,6 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     implementation project(':capacitor-cordova-android-plugins')
-    implementation 'com.google.android.gms:play-services-auth:20.7.0'  // ← add this
 }
 
 apply from: 'capacitor.build.gradle'

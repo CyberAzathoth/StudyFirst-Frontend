@@ -19,7 +19,6 @@ import AppLock from "../../lib/applock";
 import { notificationsService } from '../services';
 
 
-
 const API = "https://studyfirstapi-production.up.railway.app";
 
 interface Assignment {
@@ -51,7 +50,6 @@ const [user, setUser] = useState<any>({});
 
 useEffect(() => {
   Preferences.get({ key: "study_first_token" }).then(({ value }) => {
-    console.log("TOKEN LOADED:", value ? "exists" : "null");
     setToken(value);
   });
   Preferences.get({ key: "study_first_auth" }).then(({ value }) => {
@@ -71,7 +69,6 @@ useEffect(() => {
 
   // Fetch today's tasks from backend
 const fetchTasks = async (currentToken: string, forceNotif = false) => {
-  console.log("FETCHING TASKS...");
   setLoading(true);
   try {
     const res = await fetch(`${API}/tasks`, {
@@ -80,12 +77,9 @@ const fetchTasks = async (currentToken: string, forceNotif = false) => {
         Authorization: `Bearer ${currentToken}`,
       },
     });
-    console.log("TASKS STATUS:", res.status);
     if (res.ok) {
       const data = await res.json();
       const tasks = Array.isArray(data) ? data : data.value || [];
-      console.log("TASKS COUNT:", tasks.length);
-      console.log("TASKS DATA:", JSON.stringify(tasks));// handle both formats
   const mapped = tasks.map((t: any) => ({
     id: t.id,
     title: t.title,
@@ -145,7 +139,7 @@ const syncClassroom = async (currentToken: string) => {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentToken}` },
     });
-    await Preferences.set({ key: "last_classroom_sync", value: new Date().toISOString() }); // ADD THIS
+    await Preferences.set({ key: "last_classroom_sync", value: new Date().toISOString() });
     await fetchTasks(currentToken, true);
   } catch (e) {
     console.error("Classroom sync failed", e);
@@ -173,10 +167,8 @@ const fetchStreak = async (currentToken: string) => {
 const hasSynced = useRef(false);
 
 useEffect(() => {
-  console.log("TOKEN STATE:", token);
   if (!token) return;
   const init = async () => {
-    console.log("INIT RUNNING");
     fetch(`${API}/streaks/recalculate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

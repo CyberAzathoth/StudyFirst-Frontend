@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { X, Clock, BookOpen, ExternalLink, FileText } from "lucide-react";
 import { Browser } from "@capacitor/browser";
+import { Preferences } from "@capacitor/preferences";
 
 interface AssignmentDetailModalProps {
   assignment: Assignment | null;
@@ -18,7 +19,7 @@ interface Assignment {
   description?: string;
   attachments?: string[];
   points?: number;
-  classroomUrl?: string; // add this
+  classroomUrl?: string; 
 }
 
 export default function AssignmentDetailModal({
@@ -151,7 +152,13 @@ export default function AssignmentDetailModal({
                   </p>
                   <button 
 onClick={async () => {
-  const url = assignment.classroomUrl || "https://classroom.google.com";
+  const { value: auth } = await Preferences.get({ key: "study_first_auth" });
+  const user = auth ? JSON.parse(auth) : null;
+  const email = user?.email || "";
+  const baseUrl = assignment.classroomUrl || "https://classroom.google.com";
+  const url = email 
+    ? `${baseUrl}?authuser=${encodeURIComponent(email)}` 
+    : baseUrl;
   await Browser.open({ url });
 }}
   className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"

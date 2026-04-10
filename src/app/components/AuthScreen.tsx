@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
+import { Preferences } from "@capacitor/preferences";
 import { motion } from "motion/react";
 import { BookOpen } from "lucide-react";
-import { Preferences } from "@capacitor/preferences";
-import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import { notificationsService } from '../services';
 
 export default function AuthScreen() {
@@ -12,54 +12,75 @@ export default function AuthScreen() {
   const navigate = useNavigate();
 
   const handleGoogleAuth = async () => {
-  try {
-    setLoading(true);
-    setError("");
+    try {
+      setLoading(true);
+      setError("");
 
-    await GoogleAuth.initialize({
-      clientId: "551585504334-lj19g8dubm8hducajomkvomf8tte7a1a.apps.googleusercontent.com",
-      scopes: [
-        "profile",
-        "email",
-        "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-        "https://www.googleapis.com/auth/classroom.courses.readonly",
-      ],
-      grantOfflineAccess: true,
-    });
+      await GoogleAuth.initialize({
+  clientId: "551585504334-lj19g8dubm8hducajomkvomf8tte7a1a.apps.googleusercontent.com",
+  scopes: [
+    "profile",
+    "email",
+    "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+    "https://www.googleapis.com/auth/classroom.courses.readonly"
+  ],
+  grantOfflineAccess: true,
+});
 
-    const googleUser = await GoogleAuth.signIn();
+// Force sign out first to clear cached Google session
+try { await GoogleAuth.signOut(); } catch (e) {}
 
-    const serverAuthCode = googleUser?.serverAuthCode;
-    if (!serverAuthCode) {
-      throw new Error("No server auth code received — please try again");
-    }
+const googleUser = await GoogleAuth.signIn();
 
-    const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/google", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ authCode: serverAuthCode }),
-    });
 
-    const data = await response.json();
+      // ← KEY FIX: Check for serverAuthCode immediately
+      if (!googleUser?.serverAuthCode) {
+        throw new Error(
+          "Sign-in failed: No authentication code received. " +
+          "If this persists, please restart the app or try again in a moment."
+        );
+      }
 
-    if (!response.ok) {
-      throw new Error(data.detail || data.message || "Login failed");
-    }
 
-    await Preferences.set({ key: "study_first_token", value: data.token });
-    await Preferences.set({ key: "study_first_auth", value: JSON.stringify(data.user) });
-    await Preferences.set({ key: "has_logged_in", value: "true" });
-    await Preferences.set({ key: "current_user", value: JSON.stringify(data.user) });
+      const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authCode: googleUser.serverAuthCode }),
+      });
 
-    navigate("/dashboard", { replace: true });
-    await notificationsService.requestPermissions();
-  } catch (err: any) {
-    console.error("Login error:", err);
-    setError(err.message || "Google login failed. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-};
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.message || "Login failed");
+      }
+
+      if (!data.token) {
+        throw new Error("No token received from server");
+      }
+
+      await Promise.all([
+        Preferences.set({ key: "study_first_token", value: data.token }),
+        Preferences.set({ key: "study_first_auth", value: JSON.stringify(data.user) }),
+        Preferences.set({ key: "has_logged_in", value: "true" }),
+        Preferences.set({ key: "current_user", value: JSON.stringify(data.user) }),
+      ]);
+
+      // Fire-and-forget notification setup
+      setTimeout(() => {
+        notificationsService.requestPermissions().catch(e => {
+          console.error("Notification setup failed (non-blocking):", e);
+        });
+      }, 0);
+
+      navigate("/dashboard", { replace: true });
+
+    } catch (err: any) {
+  console.error("Login error:", err);
+  
+  setError(err?.message || err?.toString?.() || "Google login failed. Please try again.");
+  setLoading(false);
+}
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#1B1B1B] px-6 py-8">

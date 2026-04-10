@@ -94,10 +94,13 @@ export function BreakTimerProvider({ children }: { children: ReactNode }) {
 const msUntilReset = (lastBreakEndTime + 90 * 60 * 1000) - Date.now();
   if (msUntilReset <= 0) return;
   const timeout = window.setTimeout(async () => {
-  const { value: remindersEnabled } = await Preferences.get({ key: "break_reminders_enabled" });
-  if (remindersEnabled !== "false") {
-    setShowCooldownResetModal(true);
-  }
+const { value: token } = await Preferences.get({ key: "study_first_token" });
+if (!token) return; // don't schedule or show modals if not logged in
+
+const { value: remindersEnabled } = await Preferences.get({ key: "break_reminders_enabled" });
+if (remindersEnabled !== "false") {
+  setShowCooldownResetModal(true);
+}
 }, msUntilReset);
   return () => clearTimeout(timeout);
 }, [lastBreakEndTime, hasTodayTasks]);

@@ -7,24 +7,30 @@ import { Preferences } from "@capacitor/preferences";
 export default function SplashScreen() {
   const navigate = useNavigate();
 
-useEffect(() => {
-  const timer = setTimeout(async () => {
-    const { value: hasLoggedInBefore } = await Preferences.get({ key: "has_logged_in" });
-    const { value: token } = await Preferences.get({ key: "study_first_token" });
+  useEffect(() => {
+    let cancelled = false;
 
-    console.log("has_logged_in:", hasLoggedInBefore);
-    console.log("token:", token);
+    const check = async () => {
+      const [, { value: hasLoggedInBefore }, { value: token }] = await Promise.all([
+        new Promise((res) => setTimeout(res, 2000)),
+        Preferences.get({ key: "has_logged_in" }),
+        Preferences.get({ key: "study_first_token" }),
+      ]);
 
-    if (hasLoggedInBefore && token) {
-      navigate("/dashboard", { replace: true });
-    } else if (hasLoggedInBefore) {
-      navigate("/auth", { replace: true });
-    } else {
-      navigate("/welcome", { replace: true });
-    }
-  }, 2000);
-  return () => clearTimeout(timer);
-}, [navigate]);
+      if (cancelled) return;
+
+      if (hasLoggedInBefore && token) {
+        navigate("/dashboard", { replace: true });
+      } else if (hasLoggedInBefore) {
+        navigate("/auth", { replace: true });
+      } else {
+        navigate("/welcome", { replace: true });
+      }
+    };
+
+    check();
+    return () => { cancelled = true; };
+  }, [navigate]);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-[#1B1B1B]">

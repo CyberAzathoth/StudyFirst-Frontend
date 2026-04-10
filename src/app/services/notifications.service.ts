@@ -1,12 +1,9 @@
-// ============================================================================
-// Notifications Service - Assignment Due Tomorrow Reminders + Break Reminders
-// ============================================================================
-
 import {
   LocalNotifications,
 } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
 import type { Task } from "../types";
+
 
 const NOTIF_ID_DUE_TOMORROW = 1001;
 const NOTIF_ID_BREAK_COOLDOWN_RESET = 1002;
@@ -57,8 +54,6 @@ class NotificationsService {
       return false;
     }
   }
-
-  // ── Due Tomorrow ──────────────────────────────────────────────────────────
 
   async scheduleDueTomorrowNotification(tasks: Task[]): Promise<void> {
     try {
@@ -144,7 +139,7 @@ if (notifEnabled === "false") return;
     await this.scheduleDueTomorrowNotification(tasks);
   }
 
-  // ── Break Reminders ───────────────────────────────────────────────────────
+ 
 
   private getRandomMessage() {
     return BREAK_REMINDER_MESSAGES[
@@ -161,21 +156,21 @@ if (notifEnabled === "false") return;
 const { value: remindersEnabled } = await Preferences.get({ key: "break_reminders_enabled" });
 if (notifEnabled === "false" || remindersEnabled === "false") return;
 
-      // Cancel any existing break reminders first
+  
       await this.cancelBreakReminders();
 
       const now = new Date();
 
-      // Cooldown reset notification — fixed message
+  
       const resetFireAt = new Date(cooldownResetTime);
       
-      // Reminder 1 — 15 mins after cooldown reset
+
       const reminder1FireAt = new Date(cooldownResetTime.getTime() + 15 * 60 * 1000);
 
-      // Reminder 2 — 60 mins after cooldown reset
+
       const reminder2FireAt = new Date(cooldownResetTime.getTime() + 60 * 60 * 1000);
 
-      // Reminder 3 — 105 mins after cooldown reset (1hr 45min)
+  
       const reminder3FireAt = new Date(cooldownResetTime.getTime() + 105 * 60 * 1000);
 
       const msg1 = this.getRandomMessage();

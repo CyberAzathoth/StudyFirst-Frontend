@@ -7,6 +7,9 @@
     "cleartext": false
   },
   "plugins": {
+    "App": {
+      "schemes": ["com.studyfirst.app"]
+    },
     "GoogleAuth": {
       "scopes": [
         "profile",
@@ -14,7 +17,7 @@
         "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
         "https://www.googleapis.com/auth/classroom.courses.readonly"
       ],
-      "serverClientId": "551585504334-lj19g8dubm8hducajomkvomf8tte7a1a.apps.googleusercontent.com",
+      "clientId": "551585504334-lj19g8dubm8hducajomkvomf8tte7a1a.apps.googleusercontent.com",
       "forceCodeForRefreshToken": true
     },
     "LocalNotifications": {

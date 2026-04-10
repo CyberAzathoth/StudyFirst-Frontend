@@ -46,7 +46,6 @@ const fetchWeekTasks = async () => {
       },
     });
     if (!res.ok) {
-      console.log("tasks/week failed with status:", res.status);
       return;
     }
     const tasks = await res.json();
@@ -86,7 +85,6 @@ const fetchWeekTasks = async () => {
   source: t.isFromClassroom ? "google-classroom" : "manual",
   description: t.description,
   dueDate: new Date(t.dueDate),
-  // Add these:
   courseId: t.courseId,
   classroomId: t.classroomId,
 classroomUrl: t.courseId && t.classroomId
