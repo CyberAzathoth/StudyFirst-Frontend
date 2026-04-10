@@ -2,48 +2,64 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { BookOpen } from "lucide-react";
-import { useGoogleLogin } from "@react-oauth/google";
+import { Preferences } from "@capacitor/preferences";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
+import { notificationsService } from '../services';
 
 export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-const handleGoogleAuth = useGoogleLogin({
-  onSuccess: async (codeResponse) => {
-    try {
-      setLoading(true);
-      setError("");
+  const handleGoogleAuth = async () => {
+  try {
+    setLoading(true);
+    setError("");
 
-      const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ authCode: codeResponse.code }),
-      });
-      console.log("Auth code:", codeResponse.code);
-      if (!response.ok) throw new Error("Login failed");
+    await GoogleAuth.initialize({
+      clientId: "551585504334-lj19g8dubm8hducajomkvomf8tte7a1a.apps.googleusercontent.com",
+      scopes: [
+        "profile",
+        "email",
+        "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+        "https://www.googleapis.com/auth/classroom.courses.readonly",
+      ],
+      grantOfflineAccess: true,
+    });
 
-      const data = await response.json();
-      localStorage.setItem("study_first_token", data.token);
-      localStorage.setItem("study_first_auth", JSON.stringify(data.user));
+    const googleUser = await GoogleAuth.signIn();
 
-      navigate("/dashboard");
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("Google login failed. Please try again.");
-    } finally {
-      setLoading(false);
+    const serverAuthCode = googleUser?.serverAuthCode;
+    if (!serverAuthCode) {
+      throw new Error("No server auth code received — please try again");
     }
-  },
-  onError: () => setError("Google login was cancelled or failed."),
-  flow: "auth-code",
-  scope: [
-    "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-    "https://www.googleapis.com/auth/classroom.courses.readonly",
-    "profile",
-    "email",
-  ].join(" "),
-});
+
+    const response = await fetch("https://studyfirstapi-production.up.railway.app/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authCode: serverAuthCode }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || data.message || "Login failed");
+    }
+
+    await Preferences.set({ key: "study_first_token", value: data.token });
+    await Preferences.set({ key: "study_first_auth", value: JSON.stringify(data.user) });
+    await Preferences.set({ key: "has_logged_in", value: "true" });
+    await Preferences.set({ key: "current_user", value: JSON.stringify(data.user) });
+
+    navigate("/dashboard", { replace: true });
+    await notificationsService.requestPermissions();
+  } catch (err: any) {
+    console.error("Login error:", err);
+    setError(err.message || "Google login failed. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#1B1B1B] px-6 py-8">
@@ -77,7 +93,7 @@ const handleGoogleAuth = useGoogleLogin({
           )}
 
           <button
-            onClick={() => handleGoogleAuth()}
+            onClick={handleGoogleAuth}
             disabled={loading}
             className="flex items-center justify-center gap-3 w-full px-6 py-4 bg-white border-2 border-gray-200 rounded-2xl font-semibold text-gray-700 transition-all hover:bg-gray-50 hover:border-[#F5C842]/50 shadow-sm disabled:opacity-50"
           >

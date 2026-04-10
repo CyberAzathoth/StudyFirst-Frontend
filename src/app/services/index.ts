@@ -9,6 +9,7 @@ export { streaksService } from './streaks.service';
 export { badgesService } from './badges.service';
 export { breaksService } from './breaks.service';
 export { settingsService } from './settings.service';
+export { notificationsService } from './notifications.service';
 
 export { apiClient } from './api-client';
 export { API_CONFIG, API_ENDPOINTS } from './config';

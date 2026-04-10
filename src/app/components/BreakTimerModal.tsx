@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, Coffee, Clock, Gift, Timer, AlertCircle } from "lucide-react";
 import { useBreakTimer } from "../../context/BreakTimerContext";
 
+
 interface BreakTimerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,6 +25,8 @@ export default function BreakTimerModal({
     cancelBreak,
     formatTime,
     formatDailyTime,
+    showCooldownResetModal,
+  setShowCooldownResetModal,
   } = useBreakTimer();
 
   const maxDailyBreak = 120;
@@ -45,7 +48,7 @@ export default function BreakTimerModal({
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl p-8 shadow-2xl max-w-md w-full"
+            className="bg-white rounded-3xl p-6 shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold text-gray-900">Take a Break</h3>
@@ -56,7 +59,31 @@ export default function BreakTimerModal({
                 <X className="w-6 h-6 text-gray-500" />
               </button>
             </div>
-
+{showCooldownResetModal && (
+  <motion.div
+    initial={{ opacity: 0, y: -10 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-4 mb-4 text-white"
+  >
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <Coffee className="w-6 h-6 flex-shrink-0" />
+        <div>
+          <h4 className="font-bold">Break cooldown reset! ☕</h4>
+          <p className="text-sm text-white/90">
+            You can take a break now. Rest is part of the grind!
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={() => setShowCooldownResetModal(false)}
+        className="p-1 hover:bg-white/20 rounded-full transition-colors flex-shrink-0"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  </motion.div>
+)}
             {!isActive ? (
               <>
                 {/* Daily Break Tracker */}
@@ -127,13 +154,18 @@ export default function BreakTimerModal({
                 )}
 
                 <div className="flex justify-center mb-6">
-                  <Coffee className="w-20 h-20 text-orange-500" />
+                  <Coffee className="w-14 h-14 text-orange-500" />
                 </div>
 
                 <p className="text-gray-600 text-center mb-6">
                   Choose how long you need. Apps will unlock temporarily.
                 </p>
-
+{dailyBreakRemaining === 0 && (
+  <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-4 mb-4 text-center">
+    <p className="font-semibold text-red-700">Daily break limit reached</p>
+    <p className="text-sm text-red-600 mt-1">You've used all 2 hours. Resets tomorrow!</p>
+  </div>
+)}
                 <div className="space-y-3">
                   <button
                     onClick={() => startBreak(15)}

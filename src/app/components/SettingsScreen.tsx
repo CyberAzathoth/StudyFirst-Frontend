@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import {
   Settings as SettingsIcon,
   User,
   Bell,
-  Lock,
   Smartphone,
   Calendar,
   LogOut,
@@ -13,8 +12,12 @@ import {
   BookOpen,
 } from "lucide-react";
 import BottomNav from "./BottomNav";
+import AppLock from "../../lib/applock";
 import AppLockManagementModal from "./AppLockManagementModal";
 import SignOutConfirmationModal from "./SignOutConfirmationModal";
+import { Preferences } from "@capacitor/preferences";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
+import { notificationsService } from '../services';
 
 interface SettingsItem {
   icon: any;
@@ -24,6 +27,7 @@ interface SettingsItem {
   toggle?: boolean;
   onToggle?: () => void;
   onClick?: () => void;
+  clickable?: boolean; // explicit flag — chevron only shown when this is true
 }
 
 interface SettingsSection {
@@ -33,51 +37,90 @@ interface SettingsSection {
 
 export default function SettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [breakReminders, setBreakReminders] = useState(true);
+const [breakReminders, setBreakReminders] = useState(true);
+
+useEffect(() => {
+  Preferences.get({ key: "notifications_enabled" }).then(({ value }) => {
+    if (value !== null) setNotificationsEnabled(value === "true");
+  });
+  Preferences.get({ key: "break_reminders_enabled" }).then(({ value }) => {
+    if (value !== null) setBreakReminders(value === "true");
+  });
+}, []);
+
   const [showAppLockModal, setShowAppLockModal] = useState(false);
-  const [installedApps, setInstalledApps] = useState([
-    { id: 1, name: "Instagram", icon: "📷", locked: true, category: "Social Media" },
-    { id: 2, name: "TikTok", icon: "🎵", locked: true, category: "Social Media" },
-    { id: 3, name: "YouTube", icon: "▶️", locked: true, category: "Entertainment" },
-    { id: 4, name: "Twitter", icon: "🐦", locked: true, category: "Social Media" },
-    { id: 5, name: "Facebook", icon: "👥", locked: false, category: "Social Media" },
-    { id: 6, name: "Snapchat", icon: "👻", locked: false, category: "Social Media" },
-    { id: 7, name: "Netflix", icon: "🎬", locked: false, category: "Entertainment" },
-    { id: 8, name: "Spotify", icon: "🎧", locked: false, category: "Entertainment" },
-    { id: 9, name: "Reddit", icon: "🤖", locked: false, category: "Social Media" },
-    { id: 10, name: "Discord", icon: "💬", locked: false, category: "Communication" },
-    { id: 11, name: "Twitch", icon: "🎮", locked: false, category: "Entertainment" },
-    { id: 12, name: "Pinterest", icon: "📌", locked: false, category: "Social Media" },
-    { id: 13, name: "WhatsApp", icon: "📱", locked: false, category: "Communication" },
-    { id: 14, name: "Telegram", icon: "✈️", locked: false, category: "Communication" },
-    { id: 15, name: "Games", icon: "🎯", locked: false, category: "Entertainment" },
-  ]);
-
-  // Real user from localStorage
-  const user = JSON.parse(localStorage.getItem("study_first_auth") || "{}");
-  const initials = user.name
-    ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()
-    : "?";
-
-  const lockedAppsCount = installedApps.filter((app) => app.locked).length;
-
-  const handleSaveApps = (updatedApps: typeof installedApps) => {
-    setInstalledApps(updatedApps);
-  };
+  const [lockedAppsCount, setLockedAppsCount] = useState(0); // Bug 11.1 fix — starts at 0, loaded from storage
+  const [lastSynced, setLastSynced] = useState<string>("Never"); // Bug 8 fix
+  const [user, setUser] = useState<any>({});
 
   const navigate = useNavigate();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
 
-  const handleSignOut = () => {
-    setShowSignOutModal(true);
-  };
+  useEffect(() => {
+  Preferences.get({ key: "study_first_auth" }).then(({ value }) => {
+    if (value) setUser(JSON.parse(value));
+  });
 
-  const confirmSignOut = () => {
-    localStorage.clear();
-    navigate("/auth");
-  };
+  // Bug 11.1 — read locked apps count from AppLock with timeout so it can't freeze
+const loadLockedCount = async () => {
+  const timer = setTimeout(() => setLockedAppsCount(0), 3000);
+  try {
+    const state = await Promise.race([
+      AppLock.getLockingState(),
+      new Promise((_, reject) => setTimeout(() => reject("timeout"), 2500))
+    ]);
+    clearTimeout(timer);
+    setLockedAppsCount((state as any).lockedApps?.length ?? 0);
+  } catch {
+    clearTimeout(timer);
+    setLockedAppsCount(0);
+  }
+};
+  loadLockedCount();
 
-const settingsSections: SettingsSection[] = [
+  // Bug 8 — load last sync time from storage
+  Preferences.get({ key: "last_classroom_sync" }).then(({ value }) => {
+    if (value) {
+      const date = new Date(value);
+      setLastSynced(
+        date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+        ", " +
+        date.toLocaleDateString([], { month: "short", day: "numeric" })
+      );
+    } else {
+      setLastSynced("Never synced");
+    }
+  });
+}, []);
+
+
+  const initials = user.name
+    ? user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase()
+    : "?";
+
+  const handleSignOut = () => setShowSignOutModal(true);
+
+const confirmSignOut = async () => {
+  setShowSignOutModal(false);
+
+  await Promise.all([
+    Preferences.remove({ key: "study_first_token" }),
+    Preferences.remove({ key: "study_first_auth" }),
+    Preferences.remove({ key: "current_user" }),
+  ]);
+
+  navigate("/auth", { replace: true });
+
+  try {
+    await GoogleAuth.initialize({
+      scopes: ["profile", "email"],
+      grantOfflineAccess: true,
+    });
+    await GoogleAuth.signOut();
+  } catch (e) {}
+};
+
+  const settingsSections: SettingsSection[] = [
     {
       title: "Account",
       items: [
@@ -86,18 +129,21 @@ const settingsSections: SettingsSection[] = [
           label: "Profile",
           value: user.name || "User",
           color: "text-blue-600",
+          clickable: false, // Bug 11 fix — no chevron, not tappable
         },
         {
           icon: BookOpen,
           label: "Google Classroom",
           value: "Connected",
           color: "text-green-600",
+          clickable: false,
         },
         {
           icon: Calendar,
-          label: "Sync Status",
-          value: "Up to date",
+          label: "Last Synced",
+          value: lastSynced, // Bug 8 fix — real value
           color: "text-purple-600",
+          clickable: false,
         },
       ],
     },
@@ -109,8 +155,15 @@ const settingsSections: SettingsSection[] = [
           label: "Notifications",
           value: notificationsEnabled,
           toggle: true,
-          onToggle: () =>
-            setNotificationsEnabled(!notificationsEnabled),
+          onToggle: async () => {
+  const newVal = !notificationsEnabled;
+  setNotificationsEnabled(newVal);
+  await Preferences.set({ key: "notifications_enabled", value: String(newVal) });
+  if (!newVal) {
+    await notificationsService.cancelDueTomorrowNotification();
+    await notificationsService.cancelBreakReminders();
+  }
+},
           color: "text-orange-600",
         },
         {
@@ -118,7 +171,12 @@ const settingsSections: SettingsSection[] = [
           label: "Break Reminders",
           value: breakReminders,
           toggle: true,
-          onToggle: () => setBreakReminders(!breakReminders),
+          onToggle: async () => {
+  const newVal = !breakReminders;
+  setBreakReminders(newVal);
+  await Preferences.set({ key: "break_reminders_enabled", value: String(newVal) });
+  if (!newVal) await notificationsService.cancelBreakReminders();
+},
           color: "text-pink-600",
         },
       ],
@@ -129,16 +187,12 @@ const settingsSections: SettingsSection[] = [
         {
           icon: Smartphone,
           label: "Locked Apps",
-          value: `${lockedAppsCount} apps`,
+          value: lockedAppsCount === 0 ? "None selected" : `${lockedAppsCount} app${lockedAppsCount !== 1 ? "s" : ""}`,
           color: "text-red-600",
           onClick: () => setShowAppLockModal(true),
+          clickable: true, // Bug 11 fix — only this one gets a chevron
         },
-        {
-          icon: Lock,
-          label: "Break Duration",
-          value: "15-30 min",
-          color: "text-yellow-600",
-        },
+        // Bug 14 fix — removed useless "Break Duration" static row entirely
       ],
     },
   ];
@@ -153,90 +207,74 @@ const settingsSections: SettingsSection[] = [
               <SettingsIcon className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white">
-                Settings
-              </h1>
-              <p className="text-gray-400">
-                Manage your preferences
-              </p>
+              <h1 className="text-3xl font-bold text-white">Settings</h1>
+              <p className="text-gray-400">Manage your preferences</p>
             </div>
           </div>
         </div>
 
         {/* Profile Card */}
-        <div className="mx-6 mt-6 mb-2 bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-[#F5C842] rounded-full flex items-center justify-center text-[#1B1B1B] text-2xl font-bold overflow-hidden">
-              {user.picture ? (
-                <img src={user.picture} alt={user.name} className="w-16 h-16 rounded-full object-cover" />
-              ) : (
-                initials
-              )}
-            </div>
-            <div className="flex-1">
-              <h3 className="text-xl font-bold text-[#1B1B1B]">{user.name || "User"}</h3>
-              <p className="text-gray-600">{user.email || ""}</p>
-            </div>
-            <ChevronRight className="w-6 h-6 text-gray-400" />
-          </div>
-        </div>
+<div className="mx-6 mt-6 mb-2 bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
+  <div className="flex items-center gap-4">
+    <div className="w-14 h-14 flex-shrink-0 bg-[#F5C842] rounded-full flex items-center justify-center text-[#1B1B1B] text-xl font-bold overflow-hidden">
+      {user.picture ? (
+        <img src={user.picture} alt={user.name} className="w-14 h-14 rounded-full object-cover" />
+      ) : (
+        initials
+      )}
+    </div>
+    <div className="flex-1 min-w-0">
+      <h3 className="text-lg font-bold text-[#1B1B1B] truncate">{user.name || "User"}</h3>
+      <p className="text-sm text-gray-500 truncate">{user.email || ""}</p>
+    </div>
+  </div>
+</div>
 
         {/* Settings Sections */}
         <div className="px-6 space-y-6">
           {settingsSections.map((section, sectionIndex) => (
             <div key={sectionIndex} className="space-y-3">
-              <h2 className="text-lg font-bold text-[#1B1B1B]">
-                {section.title}
-              </h2>
+              <h2 className="text-lg font-bold text-[#1B1B1B]">{section.title}</h2>
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
                 {section.items.map((item, itemIndex) => {
                   const Icon = item.icon;
                   return (
                     <div key={itemIndex}>
                       <div
-                        className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${
-                          item.onClick ? "cursor-pointer" : ""
+                        className={`flex items-center gap-4 p-4 transition-colors ${
+                          item.clickable ? "cursor-pointer hover:bg-gray-50 active:bg-gray-100" : "cursor-default"
                         }`}
-                        onClick={item.onClick}
+                        onClick={item.clickable && item.onClick ? item.onClick : undefined}
                       >
-                        <div className={`${item.color}`}>
+                        <div className={item.color}>
                           <Icon className="w-6 h-6" />
                         </div>
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900">
-                            {item.label}
-                          </h3>
-                          {!item.toggle &&
-                            typeof item.value === "string" && (
-                              <p className="text-sm text-gray-600">
-                                {item.value}
-                              </p>
-                            )}
+                          <h3 className="font-semibold text-gray-900">{item.label}</h3>
+                          {!item.toggle && typeof item.value === "string" && (
+                            <p className="text-sm text-gray-600">{item.value}</p>
+                          )}
                         </div>
                         {item.toggle ? (
                           <button
-                            onClick={item.onToggle}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              item.onToggle?.();
+                            }}
                             className={`relative w-12 h-7 rounded-full transition-colors ${
-                              item.value
-                                ? "bg-purple-600"
-                                : "bg-gray-300"
+                              item.value ? "bg-purple-600" : "bg-gray-300"
                             }`}
                           >
                             <motion.div
-                              animate={{
-                                x: item.value ? 20 : 0,
-                              }}
-                              transition={{
-                                type: "spring",
-                                stiffness: 500,
-                                damping: 30,
-                              }}
+                              animate={{ x: item.value ? 20 : 0 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
                               className="absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-md"
                             />
                           </button>
-                        ) : (
+                        ) : item.clickable ? (
+                          // Bug 11 fix — ChevronRight only on clickable items
                           <ChevronRight className="w-5 h-5 text-gray-400" />
-                        )}
+                        ) : null}
                       </div>
                       {itemIndex < section.items.length - 1 && (
                         <div className="h-px bg-gray-100 mx-4" />
@@ -248,11 +286,9 @@ const settingsSections: SettingsSection[] = [
             </div>
           ))}
 
-          {/* Danger Zone */}
+          {/* Sign Out */}
           <div className="space-y-3 pb-6">
-            <h2 className="text-lg font-bold text-gray-900">
-              Account Actions
-            </h2>
+            <h2 className="text-lg font-bold text-gray-900">Account Actions</h2>
             <button
               className="flex items-center gap-4 w-full p-4 bg-red-50 border-2 border-red-200 rounded-2xl text-red-600 font-semibold hover:bg-red-100 transition-colors"
               onClick={handleSignOut}
@@ -263,18 +299,30 @@ const settingsSections: SettingsSection[] = [
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-6 pb-6 text-center">
-          <p className="text-sm text-gray-500">
-            Study First v1.0.0
-          </p>
+          <p className="text-sm text-gray-500">Study First v1.0.0</p>
         </div>
       </div>
 
-      <AppLockManagementModal
-        isOpen={showAppLockModal}
-        onClose={() => setShowAppLockModal(false)}
-      />
+      {showAppLockModal && (
+  <AppLockManagementModal
+    isOpen={showAppLockModal}
+    onClose={() => {
+      setShowAppLockModal(false);
+      setTimeout(async () => {
+        try {
+          const state = await Promise.race([
+            AppLock.getLockingState(),
+            new Promise((_, reject) => setTimeout(() => reject(), 2000))
+          ]);
+          setLockedAppsCount((state as any).lockedApps?.length ?? 0);
+        } catch {
+          setLockedAppsCount(0);
+        }
+      }, 300);
+    }}
+  />
+)}
 
       <SignOutConfirmationModal
         isOpen={showSignOutModal}

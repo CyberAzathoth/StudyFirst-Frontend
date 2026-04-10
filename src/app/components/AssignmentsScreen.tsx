@@ -3,6 +3,8 @@ import { motion } from "motion/react";
 import { Calendar, ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock } from "lucide-react";
 import BottomNav from "./BottomNav";
 import AssignmentDetailModal from "./AssignmentDetailModal";
+import { Preferences } from "@capacitor/preferences";
+
 
 const API = "https://studyfirstapi-production.up.railway.app";
 
@@ -15,6 +17,9 @@ interface Assignment {
   source: string;
   description?: string;
   dueDate: Date;
+  courseId?: string;
+  classroomId?: string;
+  classroomUrl?: string;
 }
 
 interface DayGroup {
@@ -32,7 +37,7 @@ export default function AssignmentsScreen() {
   const [loading, setLoading] = useState(true);
 
 const fetchWeekTasks = async () => {
-  const token = localStorage.getItem("study_first_token");
+  const { value: token } = await Preferences.get({ key: "study_first_token" });
   try {
     const res = await fetch(`${API}/tasks/week`, {
       headers: {
@@ -45,7 +50,6 @@ const fetchWeekTasks = async () => {
       return;
     }
     const tasks = await res.json();
-    console.log("tasks fetched:", tasks);
 
       // Build 7-day grid starting from today
       const today = new Date();
@@ -74,15 +78,21 @@ const fetchWeekTasks = async () => {
           day: i === 0 ? "Today" : i === 1 ? "Tomorrow" : dayNames[date.getDay()],
           dateObj: date,
           assignments: dayTasks.map((t: any) => ({
-            id: t.id,
-            title: t.title,
-            class: t.description?.split(":")[0] || "Task",
-            dueTime: new Date(t.dueDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            completed: t.isCompleted,
-            source: t.isFromClassroom ? "google-classroom" : "manual",
-            description: t.description,
-            dueDate: new Date(t.dueDate),
-          })),
+  id: t.id,
+  title: t.title,
+  class: t.description?.split(":")[0] || "Task",
+  dueTime: new Date(t.dueDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  completed: t.isCompleted,
+  source: t.isFromClassroom ? "google-classroom" : "manual",
+  description: t.description,
+  dueDate: new Date(t.dueDate),
+  // Add these:
+  courseId: t.courseId,
+  classroomId: t.classroomId,
+classroomUrl: t.courseId && t.classroomId
+  ? `https://classroom.google.com/c/${btoa(t.courseId)}/a/${btoa(t.classroomId)}/details`
+  : "https://classroom.google.com",
+})),
         };
       });
 
@@ -101,7 +111,12 @@ const fetchWeekTasks = async () => {
   };
 
 const completeTask = async (id: number) => {
-  const token = localStorage.getItem("study_first_token");
+  const alreadyDone = weekData.some(d =>
+    d.assignments.some(a => a.id === id && a.completed)
+  );
+  if (alreadyDone) return;
+
+  const { value: token } = await Preferences.get({ key: "study_first_token" });
   try {
     await fetch(`${API}/tasks/${id}/complete`, {
       method: "PATCH",
@@ -110,20 +125,35 @@ const completeTask = async (id: number) => {
         Authorization: `Bearer ${token}`,
       },
     });
-      setWeekData(prev => prev.map(day => ({
-        ...day,
-        assignments: day.assignments.map(a =>
-          a.id === id ? { ...a, completed: true } : a
-        ),
-      })));
-    } catch (e) {
-      console.error("Failed to complete task", e);
-    }
-  };
 
-  useEffect(() => {
-    fetchWeekTasks();
-  }, []);
+    setWeekData(prev => prev.map(day => ({
+      ...day,
+      assignments: day.assignments.map(a =>
+        a.id === id ? { ...a, completed: true } : a
+      ),
+    })));
+
+    // Check achievements after completion
+    await fetch(`${API}/achievements/check`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+  } catch (e) {
+    console.error("Failed to complete task", e);
+  }
+}; 
+
+useEffect(() => {
+  const init = async () => {
+    const { value: token } = await Preferences.get({ key: "study_first_token" });
+    if (token) fetchWeekTasks();
+  };
+  init();
+}, []);
 
   const totalAssignments = weekData.reduce((acc, d) => acc + d.assignments.length, 0);
   const completedAssignments = weekData.reduce(

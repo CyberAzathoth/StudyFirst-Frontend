@@ -4,119 +4,86 @@ import BottomNav from "./BottomNav";
 import { useState, useEffect } from "react";
 import AchievementDetailModal from "./AchievementDetailModal";
 import AllAchievementsModal from "./AllAchievementsModal";
+import { Preferences } from "@capacitor/preferences";
 
 const API = "https://studyfirstapi-production.up.railway.app";
 
-const achievements = [
-  {
-    id: 1,
-    title: "7 Day Streak",
-    icon: "🔥",
-    unlocked: false,
-    color: "from-orange-500 to-red-500",
-    description: "Maintain a 7-day streak of completing at least one assignment every day.",
-    requirement: "Complete at least one assignment for 7 consecutive days.",
-    unlockedDate: "",
-  },
-  {
-    id: 2,
-    title: "Early Bird",
-    icon: "🌅",
-    unlocked: false,
-    color: "from-yellow-500 to-orange-500",
-    description: "Complete an assignment before 8:00 AM.",
-    requirement: "Complete any assignment before 8:00 AM.",
-    unlockedDate: "",
-  },
-  {
-    id: 3,
-    title: "Perfect Week",
-    icon: "⭐",
-    unlocked: false,
-    color: "from-purple-500 to-pink-500",
-    description: "Complete all assignments for an entire week without missing any.",
-    requirement: "Complete 100% of your assignments for 7 consecutive days.",
-  },
-  {
-    id: 4,
-    title: "Speed Demon",
-    icon: "⚡",
-    unlocked: false,
-    color: "from-blue-500 to-cyan-500",
-    description: "Complete 5 assignments in a single day.",
-    requirement: "Complete 5 or more assignments in one day.",
-    unlockedDate: "",
-  },
-  {
-    id: 5,
-    title: "30 Day Warrior",
-    icon: "🏆",
-    unlocked: false,
-    color: "from-green-500 to-emerald-500",
-    description: "Maintain a 30-day streak of completing assignments.",
-    requirement: "Complete at least one assignment for 30 consecutive days.",
-  },
-  {
-    id: 6,
-    title: "Focus Master",
-    icon: "🎯",
-    unlocked: false,
-    color: "from-indigo-500 to-purple-500",
-    description: "Complete 100 total assignments using Study First.",
-    requirement: "Complete a total of 100 assignments.",
-  },
-];
+type Achievement = {
+  id: number;
+  title: string;
+  icon: string;
+  unlocked: boolean;
+  color: string;
+  description: string;
+  requirement: string;
+  unlockedDate?: string;
+};
+
+type WeekDay = { day: string; completed: number; total: number; percentage: number };
 
 export default function ProgressScreen() {
   const [currentStreak, setCurrentStreak] = useState(0);
   const [longestStreak, setLongestStreak] = useState(0);
   const [totalCompleted, setTotalCompleted] = useState(0);
-  type WeekDay = { day: string; completed: number; total: number; percentage: number };
   const [weeklyProgress, setWeeklyProgress] = useState<WeekDay[]>([]);
-  const [dynamicAchievements, setDynamicAchievements] = useState(achievements);
-  const [selectedAchievement, setSelectedAchievement] = useState<typeof achievements[0] | null>(null);
+  const [dynamicAchievements, setDynamicAchievements] = useState<Achievement[]>([]);
+  const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
   const [showAchievementDetail, setShowAchievementDetail] = useState(false);
   const [showAllAchievements, setShowAllAchievements] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
 
-  const token = localStorage.getItem("study_first_token");
-  const authHeaders = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
+  useEffect(() => {
+    Preferences.get({ key: "study_first_token" }).then(({ value }) => setToken(value));
+  }, []);
 
   const fetchData = async () => {
+    if (!token) return;
+    const authHeaders = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
     try {
-      // Fetch streak
-      const streakRes = await fetch(`${API}/streaks/current`, { headers: authHeaders });
+      // Recalculate before reading so the value is always fresh
+await fetch(`${API}/streaks/recalculate`, {
+  method: "POST",
+  headers: authHeaders,
+});
+
+const [streakRes, tasksRes, achievementsRes] = await Promise.all([
+  fetch(`${API}/streaks/current`, { headers: authHeaders }),
+fetch(`${API}/tasks/current-week`, { headers: authHeaders }),
+  fetch(`${API}/achievements`, { headers: authHeaders }),
+]);
+
+      // Streak
       if (streakRes.ok) {
         const streakData = await streakRes.json();
         setCurrentStreak(streakData.currentStreak || 0);
         setLongestStreak(streakData.longestStreak || 0);
-
-        // Update achievements based on real streak
-        setDynamicAchievements(prev => prev.map(a => {
-          if (a.id === 1) return { ...a, unlocked: streakData.currentStreak >= 7 };
-          if (a.id === 5) return { ...a, unlocked: streakData.currentStreak >= 30 };
-          return a;
-        }));
       }
 
-      // Fetch weekly tasks
-      const tasksRes = await fetch(`${API}/tasks/week`, { headers: authHeaders });
+      // Achievements from backend
+      if (achievementsRes.ok) {
+        const achievementsData = await achievementsRes.json();
+        setDynamicAchievements(achievementsData.map((a: any) => ({
+          id: a.id,
+          title: a.title,
+          icon: a.icon,
+          unlocked: a.unlocked,
+          color: a.color,
+          description: a.description,
+          requirement: a.requirement,
+          unlockedDate: a.unlockedDate,
+        })));
+      }
+
+      // Tasks
       if (tasksRes.ok) {
         const tasks = await tasksRes.json();
-
-        // Count total completed
         const completed = tasks.filter((t: any) => t.isCompleted).length;
         setTotalCompleted(completed);
 
-        // Update Focus Master achievement
-        setDynamicAchievements(prev => prev.map(a => {
-          if (a.id === 6) return { ...a, unlocked: completed >= 100 };
-          return a;
-        }));
-
-        // Build weekly progress from tasks
         const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         const today = new Date();
         const weekData = days.map((day, i) => {
@@ -140,16 +107,6 @@ export default function ProgressScreen() {
           };
         });
         setWeeklyProgress(weekData);
-
-        // Speed Demon: 5 completed today
-        const todayTasks = tasks.filter((t: any) => {
-          const d = new Date(t.dueDate);
-          return d.toDateString() === today.toDateString() && t.isCompleted;
-        });
-        setDynamicAchievements(prev => prev.map(a => {
-          if (a.id === 4) return { ...a, unlocked: todayTasks.length >= 5 };
-          return a;
-        }));
       }
     } catch (e) {
       console.error("Failed to fetch progress data", e);
@@ -157,16 +114,16 @@ export default function ProgressScreen() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (token) fetchData();
+  }, [token]);
 
-const weekCompletionRate = weeklyProgress.length > 0
-  ? Math.round(
-      weeklyProgress.reduce((sum: number, d: WeekDay) => sum + d.percentage, 0) / weeklyProgress.length
-    )
-  : 0;
+  const weekCompletionRate = weeklyProgress.length > 0
+    ? Math.round(
+        weeklyProgress.reduce((sum, d) => sum + d.percentage, 0) / weeklyProgress.length
+      )
+    : 0;
 
-  const openAchievementDetail = (achievement: typeof achievements[0]) => {
+  const openAchievementDetail = (achievement: Achievement) => {
     setSelectedAchievement(achievement);
     setShowAchievementDetail(true);
   };
@@ -225,7 +182,7 @@ const weekCompletionRate = weeklyProgress.length > 0
               <div className="text-center text-gray-400 py-8">Loading weekly data...</div>
             ) : (
               <div className="flex items-end justify-between gap-2 h-40">
-                {weeklyProgress.map((day: WeekDay, index: number) => (
+                {weeklyProgress.map((day, index) => (
                   <div key={index} className="flex-1 flex flex-col items-center gap-2">
                     <div className="w-full flex flex-col justify-end h-32">
                       <motion.div
@@ -288,13 +245,13 @@ const weekCompletionRate = weeklyProgress.length > 0
                   <div className={`text-4xl ${achievement.unlocked ? "" : "grayscale opacity-50"}`}>
                     {achievement.icon}
                   </div>
-                  <span className={`text-xs font-medium text-center ${achievement.unlocked ? "text-white" : "text-gray-500"}`}>
+                  <span className={`text-xs font-medium text-center ${achievement.unlocked ? "text-gray-900" : "text-gray-500"}`}>
                     {achievement.title}
                   </span>
                 </div>
                 {!achievement.unlocked && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl backdrop-blur-sm">
-                    <div className="text-white text-2xl">🔒</div>
+                    <div className="text-gray-900 text-2xl">🔒</div>
                   </div>
                 )}
               </motion.div>
@@ -347,7 +304,7 @@ const weekCompletionRate = weeklyProgress.length > 0
         achievements={dynamicAchievements}
         isOpen={showAllAchievements}
         onClose={() => setShowAllAchievements(false)}
-        onAchievementClick={(achievement) => {
+        onAchievementClick={(achievement: Achievement) => {
           setShowAllAchievements(false);
           openAchievementDetail(achievement);
         }}

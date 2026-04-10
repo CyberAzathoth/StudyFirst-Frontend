@@ -1,29 +1,39 @@
 package com.studyfirst.app;
 
 import android.os.Bundle;
+import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
-import java.util.HashSet;
-import java.util.Set;
+import com.codetrixstudio.capacitor.GoogleAuth.GoogleAuth;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Register AppLock plugin
+        WebView.setWebContentsDebuggingEnabled(true);  // ← add this
         registerPlugin(AppLockPlugin.class);
+        registerPlugin(GoogleAuth.class);
 
-        // Enable app locking by default
         android.content.SharedPreferences prefs = getSharedPreferences("AppLocker", MODE_PRIVATE);
-        android.content.SharedPreferences.Editor editor = prefs.edit();
-        editor.putBoolean("locking_enabled", true);
+        if (!prefs.contains("initialized")) {
+            android.content.SharedPreferences.Editor editor = prefs.edit();
+            editor.putBoolean("locking_enabled", true);
+            editor.putBoolean("initialized", true);
+            editor.putStringSet("locked_apps", new java.util.HashSet<>());
+            editor.apply();
+        }
+    }
 
-        Set<String> lockedApps = new HashSet<>();
-        lockedApps.add("com.instagram.android");
-        lockedApps.add("com.zhiliaoapp.musically");
-        lockedApps.add("com.facebook.katana");
-        lockedApps.add("com.twitter.android");
-        editor.putStringSet("locked_apps", lockedApps);
-        editor.apply();
+    @Override
+    public void onStart() {
+        super.onStart();
+        try {
+            GoogleSignInOptions gso = new GoogleSignInOptions
+                .Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .build();
+            GoogleSignIn.getClient(this, gso);
+        } catch (Exception e) {}
     }
 }

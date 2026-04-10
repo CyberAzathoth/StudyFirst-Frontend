@@ -1,5 +1,12 @@
 import { motion, AnimatePresence } from "motion/react";
 import { X, Clock, BookOpen, ExternalLink, FileText } from "lucide-react";
+import { Browser } from "@capacitor/browser";
+
+interface AssignmentDetailModalProps {
+  assignment: Assignment | null;
+  isOpen: boolean;
+  onClose: () => void;
+}
 
 interface Assignment {
   id: number;
@@ -11,12 +18,7 @@ interface Assignment {
   description?: string;
   attachments?: string[];
   points?: number;
-}
-
-interface AssignmentDetailModalProps {
-  assignment: Assignment | null;
-  isOpen: boolean;
-  onClose: () => void;
+  classroomUrl?: string; // add this
 }
 
 export default function AssignmentDetailModal({
@@ -147,13 +149,19 @@ export default function AssignmentDetailModal({
                   <p className="text-sm text-gray-700 mb-3">
                     View and submit this assignment in Google Classroom for full access to materials and submission options.
                   </p>
-                  <button className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2">
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                    </svg>
-                    Open in Google Classroom
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
+                  <button 
+onClick={async () => {
+  const url = assignment.classroomUrl || "https://classroom.google.com";
+  await Browser.open({ url });
+}}
+  className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+>
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+  </svg>
+  Open in Google Classroom
+  <ExternalLink className="w-4 h-4" />
+</button>
                 </div>
               )}
             </div>

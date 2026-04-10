@@ -1,0 +1,6 @@
+[
+  {
+    "pkg": "app-lock",
+    "classpath": "com.studyfirst.app.AppLockPlugin"
+  }
+]

@@ -11,7 +11,7 @@ interface AddTaskModalProps {
 export default function AddTaskModal({ isOpen, onClose, onAddTask }: AddTaskModalProps) {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [dueTime, setDueTime] = useState("11:59 PM");
+  const [dueTime, setDueTime] = useState("23:59");
   const [showCalendar, setShowCalendar] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
@@ -25,7 +25,7 @@ export default function AddTaskModal({ isOpen, onClose, onAddTask }: AddTaskModa
       // Reset form
       setNewTaskTitle("");
       setSelectedDate(new Date());
-      setDueTime("11:59 PM");
+      setDueTime("23:59");
       setShowCalendar(false);
       onClose();
     }
@@ -278,10 +278,9 @@ export default function AddTaskModal({ isOpen, onClose, onAddTask }: AddTaskModa
                     <Clock className="w-5 h-5 text-[#F5C842]" />
                   </div>
                   <input
-                    type="text"
+                    type="time"
                     value={dueTime}
                     onChange={(e) => setDueTime(e.target.value)}
-                    placeholder="e.g., 11:59 PM"
                     className="w-full pl-20 pr-5 py-4 bg-gray-50 border border-gray-200 rounded-xl text-[#1B1B1B] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F5C842]/30 focus:border-[#F5C842] focus:bg-white transition-all"
                   />
                 </div>

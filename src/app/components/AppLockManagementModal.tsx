@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Search, Lock, Unlock, Loader } from "lucide-react";
-import { registerPlugin } from "@capacitor/core";
-
-const AppLock = registerPlugin<any>("AppLock");
+import AppLock from "../../lib/applock";
 
 interface App {
   packageName: string;
@@ -25,39 +23,30 @@ export default function AppLockManagementModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const fetchApps = async () => {
-    setLoading(true);
-    try {
-      const result = await AppLock.getInstalledApps();
-      const installedApps = result.apps || [];
+const fetchApps = async () => {
+  setLoading(true);
+  try {
+    const [appsResult, stateResult] = await Promise.all([
+      AppLock.getInstalledApps(),
+      AppLock.getLockingState(),
+    ]);
 
-      // Get currently locked apps from SharedPreferences via a workaround
-      // Default lock Instagram and TikTok
-      const defaultLocked = [
-        "com.instagram.android",
-        "com.zhiliaoapp.musically",
-        "com.facebook.katana",
-        "com.twitter.android",
-      ];
+    const installedApps = appsResult.apps || [];
+    const currentlyLocked: string[] = stateResult.lockedApps || [];
 
-      setApps(
-        installedApps.map((app: any) => ({
-          ...app,
-          locked: defaultLocked.includes(app.packageName),
-        }))
-      );
-    } catch (e) {
-      // Fallback for web/browser (can't access Android)
-      setApps([
-        { packageName: "com.instagram.android", appName: "Instagram", locked: true },
-        { packageName: "com.zhiliaoapp.musically", appName: "TikTok", locked: true },
-        { packageName: "com.facebook.katana", appName: "Facebook", locked: true },
-        { packageName: "com.twitter.android", appName: "Twitter", locked: false },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setApps(
+      installedApps.map((app: any) => ({
+        packageName: app.packageName,
+        appName: app.appName,
+        locked: currentlyLocked.includes(app.packageName),
+      }))
+    );
+  } catch (e: any) {
+    console.error("Failed to load apps:", e);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     if (isOpen) fetchApps();

@@ -4,5 +4,5 @@
     <string name="title_activity_main">StudyFirst</string>
     <string name="package_name">com.studyfirst.app</string>
     <string name="custom_url_scheme">com.studyfirst.app</string>
-    <string name="accessibility_service_description">StudyFirst needs accessibility access to block distracting apps when you have pending tasks.</string>
-</resources>
+    <string name="server_client_id">551585504334-lj19g8dubm8hducajomkvomf8tte7a1a.apps.googleusercontent.com</string>
+    <string name="accessibility_service_description">StudyFirst needs accessibility access to block distracting apps while you have pending assignments.</string></resources>

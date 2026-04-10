@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { registerPlugin } from "@capacitor/core";
-
-const AppLock = registerPlugin<any>("AppLock");
+import AppLock from "../lib/applock";
+import { notificationsService } from '../app/services/notifications.service';
+import { Preferences } from "@capacitor/preferences";
 
 interface BreakTimerContextType {
   isActive: boolean;
@@ -16,6 +16,10 @@ interface BreakTimerContextType {
   cancelBreak: () => Promise<void>;
   formatTime: (seconds: number) => string;
   formatDailyTime: (minutes: number) => string;
+  hasTodayTasks: boolean;
+setHasTodayTasks: (value: boolean) => void;
+showCooldownResetModal: boolean;
+setShowCooldownResetModal: (value: boolean) => void;
 }
 
 const BreakTimerContext = createContext<BreakTimerContextType | null>(null);
@@ -23,10 +27,37 @@ const BreakTimerContext = createContext<BreakTimerContextType | null>(null);
 export function BreakTimerProvider({ children }: { children: ReactNode }) {
   const maxDailyBreak = 120;
   const breakIntervalRequired = 90;
+  const [hasTodayTasks, setHasTodayTasks] = useState(false);
+  const [showCooldownResetModal, setShowCooldownResetModal] = useState(false);
+  // Restore timer state from localStorage on mount
+  const [selectedDuration, setSelectedDuration] = useState<number | null>(() => {
+    const saved = localStorage.getItem("break_selected_duration");
+    return saved ? parseInt(saved) : null;
+  });
 
-  const [selectedDuration, setSelectedDuration] = useState<number | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const [isActive, setIsActive] = useState(false);
+  const [breakStartTime, setBreakStartTime] = useState<number | null>(() => {
+    const saved = localStorage.getItem("break_start_time");
+    return saved ? parseInt(saved) : null;
+  });
+
+  const [isActive, setIsActive] = useState<boolean>(() => {
+    const savedStart = localStorage.getItem("break_start_time");
+    const savedDuration = localStorage.getItem("break_selected_duration");
+    if (!savedStart || !savedDuration) return false;
+    const elapsed = (Date.now() - parseInt(savedStart)) / 1000;
+    const totalSeconds = parseInt(savedDuration) * 60;
+    return elapsed < totalSeconds;
+  });
+
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(() => {
+    const savedStart = localStorage.getItem("break_start_time");
+    const savedDuration = localStorage.getItem("break_selected_duration");
+    if (!savedStart || !savedDuration) return null;
+    const elapsed = Math.floor((Date.now() - parseInt(savedStart)) / 1000);
+    const totalSeconds = parseInt(savedDuration) * 60;
+    const remaining = totalSeconds - elapsed;
+    return remaining > 0 ? remaining : null;
+  });
 
   const [dailyBreakUsed, setDailyBreakUsed] = useState<number>(() => {
     const saved = localStorage.getItem("break_daily_used");
@@ -45,43 +76,72 @@ export function BreakTimerProvider({ children }: { children: ReactNode }) {
     return saved ? parseInt(saved) : null;
   });
 
+  // Persist daily used
   useEffect(() => {
     localStorage.setItem("break_daily_used", dailyBreakUsed.toString());
     localStorage.setItem("break_daily_date", new Date().toDateString());
   }, [dailyBreakUsed]);
 
+  // Persist last break end time
   useEffect(() => {
     if (lastBreakEndTime !== null) {
       localStorage.setItem("break_last_end_time", lastBreakEndTime.toString());
     }
   }, [lastBreakEndTime]);
 
-  // The timer that persists across page navigation
+  useEffect(() => {
+  if (!lastBreakEndTime || !hasTodayTasks) return;
+const msUntilReset = (lastBreakEndTime + 90 * 60 * 1000) - Date.now();
+  if (msUntilReset <= 0) return;
+  const timeout = window.setTimeout(async () => {
+  const { value: remindersEnabled } = await Preferences.get({ key: "break_reminders_enabled" });
+  if (remindersEnabled !== "false") {
+    setShowCooldownResetModal(true);
+  }
+}, msUntilReset);
+  return () => clearTimeout(timeout);
+}, [lastBreakEndTime, hasTodayTasks]);
+
+  // Timer tick — uses real clock diff to stay accurate across navigation
   useEffect(() => {
     let interval: number | undefined;
-    if (isActive && timeRemaining !== null && timeRemaining > 0) {
+    if (isActive && breakStartTime !== null && selectedDuration !== null) {
       interval = window.setInterval(() => {
-        setTimeRemaining((t) => (t !== null ? t - 1 : null));
+        const elapsed = Math.floor((Date.now() - breakStartTime) / 1000);
+        const totalSeconds = selectedDuration * 60;
+        const remaining = totalSeconds - elapsed;
+        if (remaining <= 0) {
+  setTimeRemaining(0);
+  setIsActive(false);
+  const endTime = Date.now();
+  setLastBreakEndTime(endTime);
+  localStorage.removeItem("break_start_time");
+  localStorage.removeItem("break_selected_duration");
+  if (hasTodayTasks) {
+    (async () => { try { await AppLock.resumeLocking(); } catch (e) {} })();
+    (async () => {
+      const nextCooldownReset = new Date(endTime + 90 * 60 * 1000);
+      await notificationsService.scheduleBreakReminders(nextCooldownReset);
+    })();
+  }
+  clearInterval(interval);
+} else {
+          setTimeRemaining(remaining);
+        }
       }, 1000);
-    } else if (timeRemaining === 0) {
-      setIsActive(false);
-      setLastBreakEndTime(Date.now());
-      try { AppLock.resumeLocking(); } catch (e) {}
     }
     return () => { if (interval) clearInterval(interval); };
-  }, [isActive, timeRemaining]);
+  }, [isActive, breakStartTime, selectedDuration, hasTodayTasks]);
 
   const canTakeBreakByInterval = () => {
     if (!lastBreakEndTime) return true;
-    const now = Date.now();
-    const minutesSinceLastBreak = (now - lastBreakEndTime) / 1000 / 60;
+    const minutesSinceLastBreak = (Date.now() - lastBreakEndTime) / 1000 / 60;
     return minutesSinceLastBreak >= breakIntervalRequired;
   };
 
   const getMinutesUntilNextBreak = () => {
     if (!lastBreakEndTime) return 0;
-    const now = Date.now();
-    const minutesSinceLastBreak = (now - lastBreakEndTime) / 1000 / 60;
+    const minutesSinceLastBreak = (Date.now() - lastBreakEndTime) / 1000 / 60;
     return Math.max(0, Math.ceil(breakIntervalRequired - minutesSinceLastBreak));
   };
 
@@ -91,28 +151,49 @@ export function BreakTimerProvider({ children }: { children: ReactNode }) {
   const dailyBreakRemaining = maxDailyBreak - dailyBreakUsed;
 
   const startBreak = async (minutes: number) => {
-    if (dailyBreakRemaining < minutes) {
-      alert(`You only have ${dailyBreakRemaining} minutes of break time left today.`);
-      return;
-    }
+  if (dailyBreakRemaining < minutes) {
+    alert(`You only have ${dailyBreakRemaining} minutes of break time left today.`);
+    return;
+  }
+  await notificationsService.cancelBreakReminders();
+  setShowCooldownResetModal(false);
+  const now = Date.now();
     try { await AppLock.pauseLocking(); } catch (e) {}
     setSelectedDuration(minutes);
+    setBreakStartTime(now);
     setTimeRemaining(minutes * 60);
     setIsActive(true);
     setDailyBreakUsed((prev) => prev + minutes);
+    // Persist to localStorage so navigation doesn't reset it
+    localStorage.setItem("break_start_time", now.toString());
+    localStorage.setItem("break_selected_duration", minutes.toString());
   };
 
   const cancelBreak = async () => {
-    if (selectedDuration && timeRemaining) {
-      const unusedMinutes = Math.ceil(timeRemaining / 60);
+    await notificationsService.cancelBreakReminders();
+if (hasTodayTasks) {
+  const nextCooldownReset = new Date(Date.now() + 90 * 60 * 1000);
+  await notificationsService.scheduleBreakReminders(nextCooldownReset);
+}
+  if (breakStartTime && selectedDuration) {
+    const elapsed = Math.floor((Date.now() - breakStartTime) / 1000 / 60);
+    const unusedMinutes = selectedDuration - elapsed;
+    if (unusedMinutes > 0) {
       setDailyBreakUsed((prev) => Math.max(0, prev - unusedMinutes));
     }
+  }
+  // Only re-lock if there are tasks due today
+  if (hasTodayTasks) {
     try { await AppLock.resumeLocking(); } catch (e) {}
-    setIsActive(false);
-    setTimeRemaining(null);
-    setSelectedDuration(null);
-    setLastBreakEndTime(Date.now());
-  };
+  }
+  setIsActive(false);
+  setTimeRemaining(null);
+  setSelectedDuration(null);
+  setBreakStartTime(null);
+  setLastBreakEndTime(Date.now());
+  localStorage.removeItem("break_start_time");
+  localStorage.removeItem("break_selected_duration");
+};
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -132,6 +213,8 @@ export function BreakTimerProvider({ children }: { children: ReactNode }) {
     <BreakTimerContext.Provider value={{
       isActive, timeRemaining, selectedDuration,
       dailyBreakUsed, dailyBreakRemaining, lastBreakEndTime,
+      showCooldownResetModal, setShowCooldownResetModal,
+      hasTodayTasks, setHasTodayTasks,
       canTakeBreak, getMinutesUntilNextBreak,
       startBreak, cancelBreak, formatTime, formatDailyTime,
     }}>

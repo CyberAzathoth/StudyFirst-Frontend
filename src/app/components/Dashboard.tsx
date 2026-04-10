@@ -1,20 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { Preferences } from "@capacitor/preferences";
 import {
   CheckCircle2,
   Circle,
-  Lock,
-  Unlock,
   Flame,
   Trophy,
   Clock,
   Plus,
+  X,
 } from "lucide-react";
 import BottomNav from "./BottomNav";
 import BreakTimerModal from "./BreakTimerModal";
 import AssignmentDetailModal from "./AssignmentDetailModal";
 import AddTaskModal from "./AddTaskModal";
 import { useBreakTimer } from "../../context/BreakTimerContext";
+import AppLock from "../../lib/applock";
+import { notificationsService } from '../services';
+
+
 
 const API = "https://studyfirstapi-production.up.railway.app";
 
@@ -31,119 +35,29 @@ interface Assignment {
   attachments?: string[];
 }
 
-import { registerPlugin } from "@capacitor/core";
-const AppLock = registerPlugin<any>("AppLock");
-
 export default function Dashboard() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [streak, setStreak] = useState(0);
-  const [lockedApps, setLockedApps] = useState<{packageName: string, appName: string, locked: boolean}[]>([]);
   const [showBreakModal, setShowBreakModal] = useState(false);
-  const { isActive: breakIsActive } = useBreakTimer();
-  const [showAddTask, setShowAddTask] = useState(false);
+const { isActive: breakIsActive, setHasTodayTasks, showCooldownResetModal, setShowCooldownResetModal } = useBreakTimer();  const [showAddTask, setShowAddTask] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [showAssignmentDetail, setShowAssignmentDetail] = useState(false);
   const [assignmentJustCompleted, setAssignmentJustCompleted] = useState(false);
 
-  const token = localStorage.getItem("study_first_token");
-  const user = JSON.parse(localStorage.getItem("study_first_auth") || "{}");
-  const googleAccessToken = localStorage.getItem("google_access_token");
+const [token, setToken] = useState<string | null>(null);
+const [user, setUser] = useState<any>({});
 
-  const authHeaders = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
 
-  // Fetch today's tasks from backend
-  const fetchTasks = async () => {
-  setLoading(true);
-  try {
-    const res = await fetch(`${API}/tasks`, { 
-      headers: {
-        "Authorization": `Bearer ${localStorage.getItem("study_first_token")}`
-      } 
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      const mapped = data.map((t: any) => ({
-        id: t.id,
-        title: t.title,
-        class: t.description?.includes(":") ? t.description.split(":")[0] : "General",
-        dueTime: new Date(t.dueDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        dueDate: new Date(t.dueDate),
-        completed: t.isCompleted,
-        source: t.isFromClassroom ? "google-classroom" : "manual",
-        description: t.description,
-      }));
-      setAssignments(mapped);
-    }
-  } catch (e) {
-    console.error("Dashboard fetch failed", e);
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // Sync Google Classroom
-const syncClassroom = async () => {
-  try {
-    await fetch(`${API}/classroom/sync`, {
-      method: "POST",
-      headers: authHeaders,
-    });
-    fetchTasks();
-  } catch (e) {
-    console.error("Classroom sync failed", e);
-  }
-};
-
-  // Fetch streak
-  const fetchStreak = async () => {
-    try {
-      const res = await fetch(`${API}/streaks/current`, { headers: authHeaders });
-      if (res.ok) {
-        const data = await res.json();
-        setStreak(data.currentStreak || 0);
-      }
-    } catch (e) {
-      console.error("Failed to fetch streak", e);
-    }
-  };
-
-  const fetchLockedApps = async () => {
-  try {
-    const result = await AppLock.getInstalledApps();
-    const defaultLocked = [
-      "com.instagram.android",
-      "com.zhiliaoapp.musically",
-      "com.facebook.katana",
-      "com.twitter.android",
-    ];
-    setLockedApps(
-      (result.apps || []).map((app: any) => ({
-        ...app,
-        locked: defaultLocked.includes(app.packageName),
-      }))
-    );
-  } catch (e) {
-    // Fallback for browser
-    setLockedApps([
-      { packageName: "com.instagram.android", appName: "Instagram", locked: true },
-      { packageName: "com.zhiliaoapp.musically", appName: "TikTok", locked: true },
-      { packageName: "com.facebook.katana", appName: "Facebook", locked: true },
-      { packageName: "com.twitter.android", appName: "Twitter", locked: false },
-    ]);
-  }
-};
-
-  useEffect(() => {
-    fetchTasks();
-    syncClassroom();
-    fetchStreak();
-    fetchLockedApps();
-  }, []);
+useEffect(() => {
+  Preferences.get({ key: "study_first_token" }).then(({ value }) => {
+    console.log("TOKEN LOADED:", value ? "exists" : "null");
+    setToken(value);
+  });
+  Preferences.get({ key: "study_first_auth" }).then(({ value }) => {
+    if (value) setUser(JSON.parse(value));
+  });
+}, []);
 
   const isToday = (date: Date) => {
     const today = new Date();
@@ -154,64 +68,194 @@ const syncClassroom = async () => {
     );
   };
 
+
+  // Fetch today's tasks from backend
+const fetchTasks = async (currentToken: string, forceNotif = false) => {
+  console.log("FETCHING TASKS...");
+  setLoading(true);
+  try {
+    const res = await fetch(`${API}/tasks`, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentToken}`,
+      },
+    });
+    console.log("TASKS STATUS:", res.status);
+    if (res.ok) {
+      const data = await res.json();
+      const tasks = Array.isArray(data) ? data : data.value || [];
+      console.log("TASKS COUNT:", tasks.length);
+      console.log("TASKS DATA:", JSON.stringify(tasks));// handle both formats
+  const mapped = tasks.map((t: any) => ({
+    id: t.id,
+    title: t.title,
+    class: t.description?.includes(":") ? t.description.split(":")[0] : "General",
+    dueTime: new Date(t.dueDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    dueDate: new Date(t.dueDate),
+    completed: t.isCompleted,
+    source: t.isFromClassroom ? "google-classroom" : "manual",
+    description: t.description,
+    courseId: t.courseId,
+    classroomId: t.classroomId,
+  }));
+  setAssignments(mapped);
+
+  const weekRes = await fetch(`${API}/tasks/week`, {
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${currentToken}`,
+  },
+});
+const weekTasks = weekRes.ok ? await weekRes.json() : tasks;
+
+// Schedule due-tomorrow notification
+const mappedForNotif = weekTasks.map((t: any) => ({
+  id: String(t.id),
+  userId: "",
+  title: t.title,
+  dueDate: t.dueDate,
+  completed: t.isCompleted,
+  source: t.isFromClassroom ? "google-classroom" : "manual",
+  createdAt: "",
+  updatedAt: "",
+}));
+forceNotif
+  ? await notificationsService.forceReschedule(mappedForNotif)
+  : await notificationsService.scheduleIfNeeded(mappedForNotif);
+
+const incompleteTodayTasks = mapped.filter((a: any) => !a.completed && isToday(new Date(a.dueDate)));
+if (incompleteTodayTasks.length > 0) {
+  setHasTodayTasks(true);
+  try { await AppLock.resumeLocking(); } catch (e) {}
+} else {
+  setHasTodayTasks(false);
+  try { await AppLock.pauseLocking(); } catch (e) {}
+}
+    }
+  } catch (e) {
+    console.error("Dashboard fetch failed", e);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const syncClassroom = async (currentToken: string) => {
+  try {
+    await fetch(`${API}/classroom/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentToken}` },
+    });
+    await Preferences.set({ key: "last_classroom_sync", value: new Date().toISOString() }); // ADD THIS
+    await fetchTasks(currentToken, true);
+  } catch (e) {
+    console.error("Classroom sync failed", e);
+  }
+};
+
+const fetchStreak = async (currentToken: string) => {
+  try {
+    const res = await fetch(`${API}/streaks/current`, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentToken}`,
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setStreak(data.currentStreak || 0);
+    }
+  } catch (e) {
+    console.error("Failed to fetch streak", e);
+  }
+};
+
+
+const hasSynced = useRef(false);
+
+useEffect(() => {
+  console.log("TOKEN STATE:", token);
+  if (!token) return;
+  const init = async () => {
+    console.log("INIT RUNNING");
+    fetch(`${API}/streaks/recalculate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    }).catch(() => {});
+
+    await fetchTasks(token);
+if (!hasSynced.current) {
+  hasSynced.current = true;
+  await syncClassroom(token);
+}
+await fetchStreak(token);
+  };
+  init();
+}, [token]);
+
+
   const todayAssignments = assignments.filter((a) => isToday(a.dueDate));
   const completedToday = todayAssignments.filter((a) => a.completed).length;
   const totalToday = todayAssignments.length;
 
 const toggleAssignment = async (id: number) => {
-    try {
-      const res = await fetch(`${API}/tasks/${id}/complete`, {
-        method: "PATCH",
-        headers: authHeaders,
-      });
-      const data = await res.json();
-      
-      setAssignments(assignments.map((a) =>
-        a.id === id ? { ...a, completed: true } : a
-      ));
-      setAssignmentJustCompleted(true);
+  if (!token) return;
+  try {
+    await fetch(`${API}/tasks/${id}/complete`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-      // If all tasks done, update streak
-      if (data.allTasksDone) {
-        await fetch(`${API}/streaks/update`, {
-          method: "POST",
-          headers: authHeaders,
-        });
-        fetchStreak();
-      }
-    } catch (e) {
-      console.error("Failed to complete task", e);
-    }
-  };
+    setAssignments(prev => prev.map((a) =>
+      a.id === id ? { ...a, completed: true } : a
+    ));
+    setAssignmentJustCompleted(true);
 
-  const addTask = async (task: { title: string; dueDate: Date; dueTime: string }) => {
-    try {
-      const dueDateTime = new Date(task.dueDate);
-      const [hours, minutes] = task.dueTime.split(":");
-      dueDateTime.setHours(parseInt(hours), parseInt(minutes));
+    await fetch(`${API}/streaks/recalculate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    await fetchStreak(token);
 
-      const res = await fetch(`${API}/tasks`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          title: task.title,
-          dueDate: dueDateTime.toISOString(),
-        }),
-      });
-      const newTask = await res.json();
-      setAssignments((prev) => [...prev, {
-        id: newTask.id,
-        title: newTask.title,
-        class: "Manual Task",
-        dueTime: task.dueTime,
-        dueDate: new Date(newTask.dueDate),
-        completed: false,
-        source: "manual",
-      }]);
-    } catch (e) {
-      console.error("Failed to add task", e);
-    }
-  };
+    await fetch(`${API}/achievements/check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+
+    // Re-check lock state after completing a task
+    await fetchTasks(token);
+  } catch (e) {
+    console.error("Failed to complete task", e);
+  }
+};
+
+const addTask = async (task: { title: string; dueDate: Date; dueTime: string }) => {
+  if (!token) return;
+  try {
+    const dueDateTime = new Date(task.dueDate);
+    const [hours, minutes] = task.dueTime.split(":");
+    dueDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+    await fetch(`${API}/tasks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: task.title,
+        // Just send local time as-is — backend stores it directly as UTC
+        dueDate: dueDateTime.toISOString().replace("Z", ""),
+      }),
+    });
+
+    await fetchTasks(token);
+  } catch (e) {
+    console.error("Failed to add task", e);
+  }
+};
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric", year: "numeric"
@@ -219,7 +263,30 @@ const toggleAssignment = async (id: number) => {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-white">
-      <div className="flex-1 overflow-y-auto pb-20">
+  {showCooldownResetModal && (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="fixed top-0 left-0 right-0 z-50 mx-4 mt-14"
+    >
+      <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-4 shadow-xl text-white flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">☕</span>
+          <div>
+            <h4 className="font-bold text-sm">Break cooldown reset!</h4>
+            <p className="text-xs text-white/90">You can take a break now. Rest is part of the grind!</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowCooldownResetModal(false)}
+          className="p-1 hover:bg-white/20 rounded-full transition-colors flex-shrink-0"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </motion.div>
+  )}
+  <div className="flex-1 overflow-y-auto pb-20">
         {/* Header */}
         <div className="bg-[#1B1B1B] px-6 pt-12 pb-8 rounded-b-[3rem] shadow-xl">
           <div className="flex items-center justify-between mb-6">
@@ -268,17 +335,29 @@ const toggleAssignment = async (id: number) => {
         </div>
 
         {/* Assignments Section */}
-        <div className="px-6 py-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-[#1B1B1B]">Due Today</h2>
-            <button
-              onClick={() => setShowAddTask(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#F5C842] text-[#1B1B1B] rounded-xl font-medium hover:bg-[#F5C842]/90 transition-colors shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Task
-            </button>
-          </div>
+<div className="px-6 py-6 space-y-4">
+  <div className="flex items-center justify-between">
+    <h2 className="text-xl font-bold text-[#1B1B1B]">Due Today</h2>
+    <div className="flex items-center gap-2">
+ <button
+  onClick={() => setShowBreakModal(true)}
+  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium shadow-sm transition-all ${
+    breakIsActive
+      ? "bg-green-500 text-white"
+      : "bg-[#1B1B1B] text-white"
+  }`}
+>
+  {breakIsActive ? "On Break" : "Break"}
+</button>
+      <button
+        onClick={() => setShowAddTask(true)}
+        className="flex items-center gap-2 px-4 py-2 bg-[#F5C842] text-[#1B1B1B] rounded-xl font-medium hover:bg-[#F5C842]/90 transition-colors shadow-sm"
+      >
+        <Plus className="w-4 h-4" />
+        Add Task
+      </button>    
+    </div>
+  </div>
 
           {loading ? (
             <div className="text-center text-gray-400 py-8">Loading tasks...</div>
@@ -337,53 +416,6 @@ const toggleAssignment = async (id: number) => {
               ))}
             </div>
           )}
-        </div>
-
-        {/* Locked Apps Section */}
-        <div className="px-6 pb-6 space-y-4">
-          <div className="flex items-center justify-between">
-  <h2 className="text-xl font-bold text-gray-900">App Lock Status</h2>
-  <button
-    onClick={() => setShowBreakModal(true)}
-    className={`px-4 py-2 rounded-xl font-medium shadow-md transition-all ${
-      breakIsActive
-        ? "bg-green-500 text-white shadow-green-500/30"
-        : "bg-[#F5C842] text-[#1B1B1B] shadow-[#F5C842]/30"
-    }`}
-  >
-    {breakIsActive ? "On Break 🎉" : "Take Break"}
-  </button>
-</div>
-
-          <div className="grid grid-cols-2 gap-3">
-  {lockedApps.slice(0, 4).map((app) => (
-    <div
-      key={app.packageName}
-      className={`bg-white rounded-2xl p-4 shadow-sm border-2 ${
-        breakIsActive || !app.locked ? "border-green-200" : "border-red-200"
-      }`}
-    >
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-12 h-12 bg-gradient-to-br from-yellow-100 to-orange-100 rounded-xl flex items-center justify-center text-xl font-bold text-gray-600">
-          {app.appName.charAt(0)}
-        </div>
-        <span className="font-medium text-gray-900 text-sm">{app.appName}</span>
-        <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${
-          breakIsActive || !app.locked
-            ? "bg-green-100 text-green-700"
-            : "bg-red-100 text-red-700"
-        }`}>
-          {breakIsActive || !app.locked
-            ? <Unlock className="w-3 h-3" />
-            : <Lock className="w-3 h-3" />}
-          <span className="text-xs font-medium">
-            {breakIsActive ? "Break" : app.locked ? "Locked" : "Unlocked"}
-          </span>
-        </div>
-      </div>
-    </div>
-  ))}
-</div>
         </div>
       </div>
 

@@ -112,22 +112,23 @@ export default function AllAchievementsModal({
                       <div className="flex-1">
                         <h3
                           className={`text-lg font-bold mb-1 ${
-                            achievement.unlocked ? "text-white" : "text-gray-900"
-                          }`}
+  achievement.unlocked ? "text-gray-900" : "text-gray-900"
+}`}
                         >
                           {achievement.title}
                         </h3>
                         <p
                           className={`text-sm mb-2 ${
-                            achievement.unlocked ? "text-white/90" : "text-gray-600"
-                          }`}
+  achievement.unlocked ? "text-gray-700" : "text-gray-600"
+}`}
                         >
                           {achievement.description}
                         </p>
                         <div
                           className={`text-xs font-medium ${
-                            achievement.unlocked ? "text-white/80" : "text-gray-500"
-                          }`}
+  achievement.unlocked ? "text-gray-600" : "text-gray-500"
+}`}
+
                         >
                           {achievement.unlocked
                             ? `Unlocked: ${achievement.unlockedDate}`
